@@ -226,70 +226,68 @@ export function selectBestMacroGapItem(
   return bestItem ?? bestDisq;
 }
 
-const MACRO_WORD: Record<'protein' | 'carbs' | 'fats', string> = {
-  protein: 'Protein',
-  carbs: 'Carbs',
-  fats: 'Fat',
-};
-
 /**
- * Narrative aligned with thresholds used in scoring (remaining share vs targets).
+ * Factual macro readout for the Target Match card (MFP-style labeling).
  */
-export function buildMealMeMacroSuggestionText(
+export function buildTargetMatchReadoutText(
   remaining: MacroBreakdown,
   targets: MacroBreakdown,
   meal: MenuItem,
 ): string {
-  const np = clampFrac(remaining.protein, targets.protein);
-  const nc = clampFrac(remaining.carbs, targets.carbs);
-  const nf = clampFrac(remaining.fats, targets.fats);
+  const g = meal.protein + meal.carbs + meal.fats + EPS;
+  const mp = meal.protein / g;
+  const mc = meal.carbs / g;
+  const mf = meal.fats / g;
 
-  let mostNeeded: keyof typeof MACRO_WORD = 'protein';
-  let hi = np;
-  if (nc > hi) {
-    mostNeeded = 'carbs';
-    hi = nc;
-  }
-  if (nf > hi) {
-    mostNeeded = 'fats';
-    hi = nf;
+  const rp = clampFrac(remaining.protein, targets.protein);
+
+  const phrases: string[] = [];
+
+  const proteinLed = mp >= 0.32 && mp >= mc && mp >= mf;
+  const carbHeavy = mc >= 0.4 && mc >= mp && mc >= mf;
+  const fatHeavy = mf >= 0.34 && mf >= mc && mf >= mp;
+  const lowCarbPlate = mc <= 0.28;
+  const lowFatPlate = mf <= 0.22;
+
+  if (proteinLed) phrases.push('High protein');
+
+  if (lowCarbPlate) {
+    if (phrases.length) phrases.push('low carb');
+    else phrases.push('Low carb');
+  } else if (carbHeavy && !proteinLed) {
+    phrases.push('Carb-heavy');
   }
 
-  let tightest: keyof typeof MACRO_WORD | null = null;
-  let lo = 2;
-  (['protein', 'carbs', 'fats'] as const).forEach((k) => {
-    const f = clampFrac(remaining[k], targets[k]);
-    if (f < lo) {
-      lo = f;
-      tightest = k;
+  if (fatHeavy && !lowCarbPlate) {
+    phrases.push('higher fat');
+  } else if (lowFatPlate && mf + 0.06 < mc && mf + 0.06 < mp) {
+    if (!phrases.some((p) => p.toLowerCase().includes('fat'))) {
+      phrases.push('lean');
     }
-  });
-
-  let head: string;
-  if (
-    tightest &&
-    mostNeeded !== tightest &&
-    lo < 0.22 &&
-    hi > 0.28
-  ) {
-    head = `You need ${MACRO_WORD[mostNeeded]}, but you are close to your ${MACRO_WORD[tightest]} limit.`;
-  } else if (hi > 0.3) {
-    head = `${MACRO_WORD[mostNeeded]} is still where you have the most room.`;
-  } else if (
-    clampFrac(remaining.calories, targets.calories) < 0.16
-  ) {
-    head =
-      'Calories are tight, so portions that fit the rest of today matter.';
-  } else if (lo < 0.2 && tightest) {
-    head = `${MACRO_WORD[tightest]} is almost topped off for today.`;
-  } else {
-    head = 'This fits what you still have room for.';
   }
 
-  const macroLine =
-    `P: ${Math.round(meal.protein)}g | C: ${Math.round(meal.carbs)}g | F: ${Math.round(meal.fats)}g`;
-  return `${head} Suggested: ${meal.name} (${macroLine}).`;
+  if (phrases.length === 0) {
+    if (clampFrac(remaining.calories, targets.calories) < 0.18) {
+      return 'Density-controlled macro match for your remaining daily targets.';
+    }
+    if (rp > 0.32 && mc <= 0.36) {
+      return 'Protein-forward macro match for your remaining daily targets.';
+    }
+    return 'Balanced macro match for your remaining daily targets.';
+  }
+
+  const [firstRaw, ...restRaw] = phrases;
+  const head = firstRaw.charAt(0).toUpperCase() + firstRaw.slice(1);
+  const lead =
+    restRaw.length > 0
+      ? `${head}, ${restRaw.map((x) => x.toLowerCase()).join(', ')}`
+      : head;
+
+  return `${lead} match for your remaining daily targets.`;
 }
+
+/** @deprecated Use buildTargetMatchReadoutText */
+export const buildMealMeMacroSuggestionText = buildTargetMatchReadoutText;
 
 /**
  * Normalize raw scores inside one menu for UI (0 .. 1), using batch min/max among eligible items only.

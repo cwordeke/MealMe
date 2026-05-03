@@ -1,5 +1,6 @@
-import { Fragment, useCallback, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import gsap from 'gsap';
+import { Loader2 } from 'lucide-react';
 import {
   UserStats,
   Goal,
@@ -9,18 +10,17 @@ import {
 } from '@/types';
 import { calculateTDEE } from '@/lib/calculations';
 import { matchPercent, mealRecommendationScore } from '@/lib/mealRecommendation';
-import { MOCK_DINING_DATA } from '@/data/mockDining';
 import { DINING_HALLS } from '@/data/diningHallMeta';
+import { fetchIsuLocationMenuItems } from '@/lib/diningService';
 import { MenuMealCardRow } from '@/components/MenuMealCardRow';
 import { MacroGapSuggestionCard } from '@/components/MacroGapSuggestionCard';
 import { LiveMacroDashboard } from '@/components/LiveMacroDashboard';
 import {
-  buildMealMeMacroSuggestionText,
+  buildTargetMatchReadoutText,
   calculateMealScore,
   computeMissingMacros,
   normalizeHallScores,
   selectBestMacroGapItem,
-  weightedTopPickGreenAlpha,
 } from '@/lib/macroGap';
 
 interface DashboardProps {
@@ -60,8 +60,14 @@ export default function Dashboard({
   const [selectedLocationKey, setSelectedLocationKey] = useState<string | null>(
     null,
   );
+  const [liveMenuByHall, setLiveMenuByHall] = useState<Record<string, MenuItem[]>>(
+    () => ({}),
+  );
+  const [menuLoading, setMenuLoading] = useState(false);
+  const [menuError, setMenuError] = useState<string | null>(null);
 
   const macroFlyAnchorRef = useRef<HTMLDivElement>(null);
+  const [macroAbsorbPulseKey, setMacroAbsorbPulseKey] = useState(0);
 
   const recContext = useMemo(
     () => ({ goal, tdee: tdeeResult }),
@@ -101,17 +107,63 @@ export default function Dashboard({
     [macroTargets, totals],
   );
 
+  useEffect(() => {
+    if (!selectedLocationKey) {
+      setMenuLoading(false);
+      setMenuError(null);
+      return;
+    }
+
+    const hall = DINING_HALLS.find((h) => h.locationKey === selectedLocationKey);
+    if (!hall) return;
+
+    let cancelled = false;
+    const ac = new AbortController();
+
+    setMenuLoading(true);
+    setMenuError(null);
+
+    fetchIsuLocationMenuItems(hall.apiSlug, hall.locationKey, ac.signal)
+      .then((items) => {
+        if (cancelled) return;
+        setLiveMenuByHall((prev) => ({ ...prev, [hall.locationKey]: items }));
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        const msg =
+          err instanceof Error ? err.message : 'Could not load dining menu';
+        setMenuError(msg);
+      })
+      .finally(() => {
+        if (!cancelled) setMenuLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, [selectedLocationKey]);
+
+  const rawLocationMenu = selectedLocationKey
+    ? liveMenuByHall[selectedLocationKey]
+    : undefined;
+
   const drawerFiltered = useMemo(() => {
-    if (!selectedLocationKey) return [];
-    return MOCK_DINING_DATA.filter((item) => {
-      if (item.location !== selectedLocationKey) return false;
+    if (!selectedLocationKey || rawLocationMenu === undefined) return [];
+    return rawLocationMenu.filter((item) => {
       if (preferences.halal && !item.isHalal) return false;
       if (preferences.vegan && !item.isVegan) return false;
       if (preferences.vegetarian && !item.isVegetarian) return false;
       if (preferences.glutenFree && !item.isGlutenFree) return false;
       return true;
     });
-  }, [selectedLocationKey, preferences]);
+  }, [selectedLocationKey, rawLocationMenu, preferences]);
+
+  const unfilteredMenuCount =
+    selectedLocationKey && rawLocationMenu !== undefined
+      ? rawLocationMenu.length
+      : -1;
 
   const menuScoreRows = useMemo((): MenuScoreRow[] => {
     return drawerFiltered.map((item) => {
@@ -134,8 +186,6 @@ export default function Dashboard({
     topPicksWeighted,
     otherOptions,
     normalizedWeightById,
-    weightMinRaw,
-    weightMaxRaw,
   } = useMemo(() => {
     const eligible = menuScoreRows
       .filter((r) => !r.disqualified)
@@ -144,8 +194,7 @@ export default function Dashboard({
     const eff = new Map<string, number>(
       eligible.map((r) => [r.item.id, r.weightedRaw]),
     );
-    const { normalized: normalizedWeightById, minRaw, maxRaw } =
-      normalizeHallScores(eff);
+    const { normalized: normalizedWeightById } = normalizeHallScores(eff);
 
     if (eligible.length === 0) {
       return {
@@ -154,8 +203,6 @@ export default function Dashboard({
           a.item.name.localeCompare(b.item.name),
         ),
         normalizedWeightById,
-        weightMinRaw: minRaw,
-        weightMaxRaw: maxRaw,
       };
     }
 
@@ -182,8 +229,6 @@ export default function Dashboard({
       topPicksWeighted,
       otherOptions,
       normalizedWeightById,
-      weightMinRaw: minRaw,
-      weightMaxRaw: maxRaw,
     };
   }, [menuScoreRows]);
 
@@ -205,7 +250,7 @@ export default function Dashboard({
 
   const macroGapMessage = useMemo(() => {
     if (!macroGapPick) return null;
-    return buildMealMeMacroSuggestionText(
+    return buildTargetMatchReadoutText(
       missingMacros,
       macroTargets,
       macroGapPick,
@@ -252,11 +297,13 @@ export default function Dashboard({
         return;
       }
 
-      const ghost = document.createElement('div');
-      ghost.setAttribute('aria-hidden', 'true');
-      ghost.className = 'mealme-macro-ghost';
-      ghost.textContent = `P ${item.protein}g · ${item.carbs}g · ${item.fats}g`;
-      document.body.appendChild(ghost);
+      const shell = document.createElement('div');
+      shell.setAttribute('aria-hidden', 'true');
+      shell.className = 'mealme-energy-orb-shell';
+      const orb = document.createElement('div');
+      orb.className = 'mealme-energy-orb';
+      shell.appendChild(orb);
+      document.body.appendChild(shell);
 
       const start = buttonEl.getBoundingClientRect();
       const end = anchor.getBoundingClientRect();
@@ -268,30 +315,55 @@ export default function Dashboard({
 
       const dx = ex - sx;
       const dy = ey - sy;
+      /** Vertical arc offset so the composite path arcs “upward” (~50–100px apex). */
+      const arcPeek = Math.min(
+        100,
+        Math.max(52, Math.hypot(dx, dy) * 0.11),
+      );
 
-      gsap.set(ghost, {
+      gsap.set(shell, {
         left: sx,
         top: sy,
         x: 0,
         y: 0,
         xPercent: -50,
         yPercent: -50,
-        opacity: 1,
-        scale: 1,
       });
+      gsap.set(orb, { x: 0, y: 0, opacity: 1 });
 
-      gsap.to(ghost, {
-        x: dx,
-        y: dy,
-        scale: 0.94,
-        opacity: 0.18,
-        duration: 0.74,
-        ease: 'power2.inOut',
+      const D = 0.46;
+
+      gsap.timeline({
+        defaults: { force3D: true },
         onComplete: () => {
-          ghost.remove();
+          shell.remove();
           logFood(item);
+          setMacroAbsorbPulseKey((n) => n + 1);
         },
-      });
+      })
+        .to(
+          shell,
+          { x: dx, y: dy, duration: D, ease: 'power2.inOut' },
+          0,
+        )
+        .to(
+          orb,
+          {
+            y: -arcPeek,
+            duration: D * 0.5,
+            ease: 'power2.out',
+          },
+          0,
+        )
+        .to(
+          orb,
+          {
+            y: 0,
+            duration: D * 0.5,
+            ease: 'power2.in',
+          },
+          D * 0.5,
+        );
     },
     [logFood],
   );
@@ -387,11 +459,35 @@ export default function Dashboard({
                   your goals.
                 </p>
               </div>
+            ) : menuLoading ? (
+              <div
+                className="flex min-h-[40vh] flex-col items-center justify-center gap-3 py-16"
+                role="status"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <Loader2
+                  className="h-8 w-8 shrink-0 animate-spin text-neutral-400"
+                  aria-hidden
+                />
+                <p className="text-sm font-medium text-neutral-500">Loading menu…</p>
+              </div>
+            ) : menuError ? (
+              <div className="flex min-h-[40vh] flex-col items-center justify-center px-4 py-16 text-center">
+                <p className="text-lg font-bold tracking-[-0.02em] text-neutral-900">
+                  Menu unavailable
+                </p>
+                <p className="mt-3 max-w-md text-sm font-medium leading-relaxed text-neutral-500">
+                  {menuError}
+                </p>
+              </div>
             ) : (
               <>
                 {menuScoreRows.length === 0 ? (
                   <p className="py-14 text-center text-sm font-medium text-neutral-500">
-                    No items match your dietary filters at this hall.
+                    {unfilteredMenuCount === 0
+                      ? 'No menu items are published for this hall right now.'
+                      : 'No items match your dietary filters at this hall.'}
                   </p>
                 ) : (
                   <div>
@@ -416,21 +512,12 @@ export default function Dashboard({
                             const pct = Math.round(
                               Math.min(100, Math.max(0, wNorm * 100)),
                             );
-                            const greenA = weightedTopPickGreenAlpha(
-                              row.weightedRaw,
-                              weightMinRaw,
-                              weightMaxRaw,
-                            );
                             return (
                               <Fragment key={row.item.id}>
                                 <MenuMealCardRow
                                   item={row.item}
-                                  matchLabel={`${pct}% fit`}
+                                  matchLabel={`${pct}% match`}
                                   showMatch
-                                  topPick
-                                  cardStyle={{
-                                    backgroundColor: `rgba(34, 197, 94, ${greenA})`,
-                                  }}
                                   onAddToPlan={(btn) =>
                                     runMacroGhost(row.item, btn)
                                   }
@@ -458,7 +545,6 @@ export default function Dashboard({
                                 item={item}
                                 matchLabel={`${matchPercent(legacyScore)}% match`}
                                 showMatch
-                                topPick={false}
                                 onAddToPlan={(btn) =>
                                   runMacroGhost(item, btn)
                                 }
@@ -484,6 +570,7 @@ export default function Dashboard({
             onAdjustQuantity={adjustLoggedQuantity}
             onSignOut={onLogout}
             flyAnchorRef={macroFlyAnchorRef}
+            absorbPulseKey={macroAbsorbPulseKey}
           />
         </div>
       </div>

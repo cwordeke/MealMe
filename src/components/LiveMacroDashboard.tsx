@@ -1,4 +1,4 @@
-import type { RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import type { LoggedFoodEntry } from '@/types';
 
 export type MacroTotals = {
@@ -100,7 +100,14 @@ type LiveMacroDashboardProps = {
   onAdjustQuantity: (menuItemId: string, delta: number) => void;
   onSignOut?: () => void;
   flyAnchorRef?: RefObject<HTMLDivElement | null>;
+  /** Increment after an energy orb completes to cue a brief pulse on gauges. */
+  absorbPulseKey?: number;
 };
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
 
 export function LiveMacroDashboard({
   totals,
@@ -109,6 +116,7 @@ export function LiveMacroDashboard({
   onAdjustQuantity,
   onSignOut,
   flyAnchorRef,
+  absorbPulseKey = 0,
 }: LiveMacroDashboardProps) {
   const pct = Math.min(
     100,
@@ -122,6 +130,26 @@ export function LiveMacroDashboard({
   const fatOff =
     CIRC * (1 - Math.min(1, totals.fats / Math.max(targets.fats, 1)));
 
+  const absorbSurfaceRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (absorbPulseKey < 1) return;
+    if (prefersReducedMotion()) return;
+    const el = absorbSurfaceRef.current;
+    if (!el) return;
+
+    el.classList.remove('mealme-absorb-surface--pulse');
+    requestAnimationFrame(() => {
+      el.classList.add('mealme-absorb-surface--pulse');
+    });
+
+    const onEnd = (): void => {
+      el.classList.remove('mealme-absorb-surface--pulse');
+    };
+    el.addEventListener('animationend', onEnd, { once: true });
+    return () => el.removeEventListener('animationend', onEnd);
+  }, [absorbPulseKey]);
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-white font-sans">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -134,53 +162,55 @@ export function LiveMacroDashboard({
             Today&apos;s progress
           </h2>
 
-          <div className="mt-8">
-            <p className="text-sm font-semibold text-neutral-600">Calories</p>
-            <div className="mt-3 h-[18px] w-full max-w-full overflow-hidden rounded-full border border-gray-200 bg-gray-100 shadow-inner">
-              <div
-                className="h-full max-w-full rounded-full bg-primary transition-[width] duration-500 ease-out motion-reduce:duration-0"
-                style={{ width: `${pct}%` }}
-              />
+          <div ref={absorbSurfaceRef} className="mealme-absorb-surface">
+            <div className="mt-8">
+              <p className="text-sm font-semibold text-neutral-600">Calories</p>
+              <div className="mt-3 h-[18px] w-full max-w-full overflow-hidden rounded-full border border-gray-200 bg-gray-100 shadow-inner">
+                <div
+                  className="h-full max-w-full rounded-full bg-primary transition-[width] duration-500 ease-out motion-reduce:duration-0"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <p className="mt-3 flex flex-wrap items-baseline gap-x-0 font-sans">
+                <span className="text-lg font-bold tabular-nums text-neutral-900">
+                  {formatEnergy(totals.calories)}
+                </span>
+                <span className="text-sm font-medium tabular-nums text-neutral-500">
+                  {` / ${formatEnergy(targets.calories)} kcal`}
+                </span>
+              </p>
             </div>
-            <p className="mt-3 flex flex-wrap items-baseline gap-x-0 font-sans">
-              <span className="text-lg font-bold tabular-nums text-neutral-900">
-                {formatEnergy(totals.calories)}
-              </span>
-              <span className="text-sm font-medium tabular-nums text-neutral-500">
-                {` / ${formatEnergy(targets.calories)} kcal`}
-              </span>
-            </p>
-          </div>
 
-          <div className="mt-10 border-t border-gray-200 pt-8">
-            <h3 className="text-sm font-semibold tracking-tight text-neutral-700">
-              Macros
-            </h3>
-            <div className="mx-auto mt-8 flex w-full min-w-0 flex-nowrap items-start justify-between gap-x-2 gap-y-8 sm:gap-x-4">
-              <MacroRing
-                label="Protein"
-                current={totals.protein}
-                goal={targets.protein}
-                stroke="var(--primary)"
-                trackStroke="#e8ecf0"
-                dashOffset={protOff}
-              />
-              <MacroRing
-                label="Carbohydrates"
-                current={totals.carbs}
-                goal={targets.carbs}
-                stroke="#292524"
-                trackStroke="#e8ecf0"
-                dashOffset={carbOff}
-              />
-              <MacroRing
-                label="Fat"
-                current={totals.fats}
-                goal={targets.fats}
-                stroke="#44403c"
-                trackStroke="#e8ecf0"
-                dashOffset={fatOff}
-              />
+            <div className="mt-10 border-t border-gray-200 pt-8">
+              <h3 className="text-sm font-semibold tracking-tight text-neutral-700">
+                Macros
+              </h3>
+              <div className="mx-auto mt-8 flex w-full min-w-0 flex-nowrap items-start justify-between gap-x-2 gap-y-8 sm:gap-x-4">
+                <MacroRing
+                  label="Protein"
+                  current={totals.protein}
+                  goal={targets.protein}
+                  stroke="var(--primary)"
+                  trackStroke="#e8ecf0"
+                  dashOffset={protOff}
+                />
+                <MacroRing
+                  label="Carbohydrates"
+                  current={totals.carbs}
+                  goal={targets.carbs}
+                  stroke="#292524"
+                  trackStroke="#e8ecf0"
+                  dashOffset={carbOff}
+                />
+                <MacroRing
+                  label="Fat"
+                  current={totals.fats}
+                  goal={targets.fats}
+                  stroke="#44403c"
+                  trackStroke="#e8ecf0"
+                  dashOffset={fatOff}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -195,40 +225,44 @@ export function LiveMacroDashboard({
                 Add meals from the menu to see them here.
               </p>
             ) : (
-              <ul className="flex flex-col gap-2">
+              <ul className="divide-y divide-gray-200 border-y border-gray-200">
                 {loggedFoods.map((entry) => {
                   const lineKcal = entry.item.calories * entry.quantity;
                   return (
                     <li
                       key={entry.item.id}
-                      className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5 shadow-sm"
+                      className="flex items-start gap-3 bg-white px-1 py-3 sm:gap-4"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-neutral-900">
+                        <p className="truncate text-[13px] font-semibold leading-snug tracking-tight text-neutral-900">
                           {entry.item.name}
                         </p>
-                        <p className="mt-0.5 text-xs font-medium tabular-nums text-neutral-500">
+                        <p className="mt-1 font-mono text-[11px] font-semibold tabular-nums text-neutral-500">
                           {Math.round(lineKcal)} kcal
                         </p>
                       </div>
-                      <div className="flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+                      <div
+                        className="flex shrink-0 items-center rounded-md border border-gray-200/90 bg-gray-50/40"
+                        role="group"
+                        aria-label="Serving count"
+                      >
                         <button
                           type="button"
                           aria-label="Decrease servings"
-                          className="flex size-8 items-center justify-center rounded-md text-base font-semibold text-neutral-700 transition hover:bg-white hover:shadow-sm active:scale-[0.98]"
+                          className="flex size-7 items-center justify-center text-[13px] font-medium tabular-nums text-neutral-400 transition-colors hover:bg-white hover:text-neutral-900"
                           onClick={() =>
                             onAdjustQuantity(entry.item.id, -1)
                           }
                         >
                           −
                         </button>
-                        <span className="min-w-[1.25rem] text-center text-sm font-semibold tabular-nums text-neutral-800">
+                        <span className="border-x border-gray-200 bg-white px-2 py-1 text-[11px] font-bold tabular-nums tracking-tight text-neutral-900">
                           {entry.quantity}
                         </span>
                         <button
                           type="button"
                           aria-label="Increase servings"
-                          className="flex size-8 items-center justify-center rounded-md text-base font-semibold text-neutral-700 transition hover:bg-white hover:shadow-sm active:scale-[0.98]"
+                          className="flex size-7 items-center justify-center text-[13px] font-medium tabular-nums text-neutral-400 transition-colors hover:bg-white hover:text-neutral-900"
                           onClick={() =>
                             onAdjustQuantity(entry.item.id, 1)
                           }

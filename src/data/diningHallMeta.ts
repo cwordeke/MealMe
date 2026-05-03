@@ -4,6 +4,12 @@ export interface DiningHallCamera {
   /** Must match `MenuItem.location` in mock data */
   locationKey: string;
   displayName: string;
+  /**
+   * Slug for Iowa State Dining REST:
+   * `/wp-json/dining/menu-hours/get-single-location/?slug=…`
+   * (see get-all-locations for canonical slugs; many end with `-2` / `-2-2`.)
+   */
+  apiSlug: string;
   lng: number;
   lat: number;
   zoom: number;
@@ -16,6 +22,7 @@ export const DINING_HALLS: DiningHallCamera[] = [
     id: 'udcc',
     locationKey: 'UDCC',
     displayName: 'UDCC',
+    apiSlug: 'union-drive-marketplace-2-2',
     lng: -93.6414,
     lat: 42.0234,
     zoom: 17.25,
@@ -26,6 +33,7 @@ export const DINING_HALLS: DiningHallCamera[] = [
     id: 'seasons',
     locationKey: 'Seasons',
     displayName: 'Seasons Marketplace',
+    apiSlug: 'seasons-marketplace-2-2',
     lng: -93.6438,
     lat: 42.0208,
     zoom: 17.15,
@@ -36,6 +44,7 @@ export const DINING_HALLS: DiningHallCamera[] = [
     id: 'conversations',
     locationKey: 'Conversations',
     displayName: 'Conversations',
+    apiSlug: 'conversations-2',
     lng: -93.6395,
     lat: 42.0216,
     zoom: 17.2,

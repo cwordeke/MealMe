@@ -1,5 +1,5 @@
-import { Sparkles } from 'lucide-react';
 import type { MenuItem } from '@/types';
+import { MenuNutritionBadgeRow } from '@/components/MenuNutritionBadges';
 
 type MacroGapSuggestionCardProps = {
   item: MenuItem;
@@ -14,28 +14,24 @@ export function MacroGapSuggestionCard({
 }: MacroGapSuggestionCardProps) {
   return (
     <section
-      className="mb-8 rounded-lg border-2 border-primary/55 bg-gradient-to-br from-emerald-50/95 via-white to-sky-50/40 p-4 shadow-sm ring-1 ring-primary/15"
-      aria-label="MealMe macro suggestion"
+      className="mb-8 rounded-lg border border-gray-200 border-l-4 border-l-brand-green bg-green-50 p-4 shadow-sm"
+      aria-label="Target match pick"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-primary/15 pb-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <Sparkles
-            className="size-5 shrink-0 text-primary"
-            strokeWidth={2}
-            aria-hidden
-          />
-          <h2 className="text-sm font-bold uppercase tracking-wide text-primary">
-            MealMe Macro Suggestion
-          </h2>
-        </div>
+      <div className="border-b border-gray-200 pb-3">
+        <h2 className="text-[0.6875rem] font-bold uppercase tracking-[0.14em] text-neutral-900">
+          Target Match
+        </h2>
       </div>
-      <p className="mt-3 text-sm font-medium leading-relaxed text-neutral-800">
+      <p className="mb-3 mt-4 text-lg font-bold leading-snug tracking-[-0.02em] text-neutral-900 sm:text-xl">
+        {item.name}
+      </p>
+      <p className="text-sm font-medium leading-relaxed text-neutral-500">
         {message}
       </p>
-      <p className="mt-2 font-mono text-xs font-medium tabular-nums text-neutral-500">
-        {item.calories} kcal
-      </p>
-      <div className="mt-4 flex justify-end">
+      <div className="mt-4">
+        <MenuNutritionBadgeRow item={item} />
+      </div>
+      <div className="mt-5 flex justify-end">
         <button
           type="button"
           onClick={(e) => onAddToPlan(e.currentTarget)}
