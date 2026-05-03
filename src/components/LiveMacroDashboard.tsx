@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef, type RefObject } from 'react';
-import gsap from 'gsap';
+import type { RefObject } from 'react';
+import type { LoggedFoodEntry } from '@/types';
 
 export type MacroTotals = {
   calories: number;
@@ -34,8 +34,7 @@ type MacroRingProps = {
   goal: number;
   stroke: string;
   trackStroke: string;
-  ringRef: RefObject<SVGCircleElement | null>;
-  trackRef: RefObject<SVGCircleElement | null>;
+  dashOffset: number;
 };
 
 function MacroRing({
@@ -44,12 +43,11 @@ function MacroRing({
   goal,
   stroke,
   trackStroke,
-  ringRef,
-  trackRef,
+  dashOffset,
 }: MacroRingProps) {
   return (
     <div className="flex min-w-0 flex-1 flex-col items-center gap-3">
-      <p className="text-center text-xs font-semibold tracking-tight text-black">
+      <p className="text-center text-xs font-semibold tracking-tight text-neutral-800">
         {label}
       </p>
       <div className="relative mx-auto aspect-square w-full max-w-[min(100%,192px)]">
@@ -59,7 +57,6 @@ function MacroRing({
           aria-hidden
         >
           <circle
-            ref={trackRef}
             cx={VC}
             cy={VC}
             r={R}
@@ -69,7 +66,6 @@ function MacroRing({
             strokeLinecap="round"
           />
           <circle
-            ref={ringRef}
             cx={VC}
             cy={VC}
             r={R}
@@ -78,16 +74,19 @@ function MacroRing({
             strokeWidth={SW}
             strokeLinecap="round"
             strokeDasharray={CIRC}
-            strokeDashoffset={CIRC}
+            strokeDashoffset={dashOffset}
+            className="transition-[stroke-dashoffset] duration-500 ease-out motion-reduce:duration-0"
           />
         </svg>
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center leading-tight">
-          <span className="font-mono text-xs font-semibold tabular-nums">
-            {Math.round(current)}
-          </span>
-          <span className="font-mono text-[10px] tabular-nums text-neutral-500">
-            / {Math.round(goal)}g
-          </span>
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-2">
+          <div className="flex flex-col items-center justify-center text-center leading-none">
+            <span className="font-sans text-3xl font-extrabold tabular-nums text-neutral-900 sm:text-[2.125rem]">
+              {Math.round(current)}
+            </span>
+            <span className="mt-px font-sans text-xs font-medium tabular-nums leading-tight text-neutral-400">
+              {` / ${Math.round(goal)}g`}
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -97,160 +96,161 @@ function MacroRing({
 type LiveMacroDashboardProps = {
   totals: MacroTotals;
   targets: MacroTargets;
+  loggedFoods: LoggedFoodEntry[];
+  onAdjustQuantity: (menuItemId: string, delta: number) => void;
   onSignOut?: () => void;
   flyAnchorRef?: RefObject<HTMLDivElement | null>;
-  calorieFillRef: RefObject<HTMLDivElement | null>;
 };
 
 export function LiveMacroDashboard({
   totals,
   targets,
+  loggedFoods,
+  onAdjustQuantity,
   onSignOut,
   flyAnchorRef,
-  calorieFillRef,
 }: LiveMacroDashboardProps) {
-  const proteinRingRef = useRef<SVGCircleElement>(null);
-  const proteinTrackRef = useRef<SVGCircleElement>(null);
-  const carbsRingRef = useRef<SVGCircleElement>(null);
-  const carbsTrackRef = useRef<SVGCircleElement>(null);
-  const fatsRingRef = useRef<SVGCircleElement>(null);
-  const fatsTrackRef = useRef<SVGCircleElement>(null);
-
-  const firstLayout = useRef(true);
-
-  useLayoutEffect(() => {
-    const fill = calorieFillRef.current;
-    const pct = Math.min(
-      100,
-      targets.calories > 0 ? (totals.calories / targets.calories) * 100 : 0,
-    );
-    const protOff = CIRC * (1 - Math.min(1, totals.protein / Math.max(targets.protein, 1)));
-    const carbOff = CIRC * (1 - Math.min(1, totals.carbs / Math.max(targets.carbs, 1)));
-    const fatOff = CIRC * (1 - Math.min(1, totals.fats / Math.max(targets.fats, 1)));
-
-    const rings = [
-      proteinRingRef.current,
-      carbsRingRef.current,
-      fatsRingRef.current,
-    ].filter(Boolean) as SVGCircleElement[];
-
-    rings.forEach((el) =>
-      gsap.killTweensOf(el),
-    );
-    if (fill) gsap.killTweensOf(fill);
-
-    const dur = firstLayout.current ? 0 : 0.62;
-    firstLayout.current = false;
-
-    if (fill) {
-      gsap.to(fill, {
-        width: `${pct}%`,
-        duration: dur,
-        ease: dur ? 'power2.out' : 'none',
-      });
-    }
-
-    const opts = dur
-      ? { duration: dur, ease: 'power2.out' as const }
-      : { duration: 0 };
-
-    if (proteinRingRef.current) {
-      gsap.to(proteinRingRef.current, {
-        attr: { strokeDashoffset: protOff },
-        ...opts,
-      });
-    }
-    if (carbsRingRef.current) {
-      gsap.to(carbsRingRef.current, {
-        attr: { strokeDashoffset: carbOff },
-        ...opts,
-      });
-    }
-    if (fatsRingRef.current) {
-      gsap.to(fatsRingRef.current, {
-        attr: { strokeDashoffset: fatOff },
-        ...opts,
-      });
-    }
-  }, [
-    totals.calories,
-    totals.protein,
-    totals.carbs,
-    totals.fats,
-    targets.calories,
-    targets.protein,
-    targets.carbs,
-    targets.fats,
-    calorieFillRef,
-  ]);
+  const pct = Math.min(
+    100,
+    targets.calories > 0 ? (totals.calories / targets.calories) * 100 : 0,
+  );
+  const protOff =
+    CIRC *
+    (1 - Math.min(1, totals.protein / Math.max(targets.protein, 1)));
+  const carbOff =
+    CIRC * (1 - Math.min(1, totals.carbs / Math.max(targets.carbs, 1)));
+  const fatOff =
+    CIRC * (1 - Math.min(1, totals.fats / Math.max(targets.fats, 1)));
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-white">
-      <div ref={flyAnchorRef} id="macro-dashboard-fly-anchor" className="min-w-0 px-6 pb-8 pt-8">
-        <h2 className="text-2xl font-bold leading-none tracking-[-0.03em] sm:text-[1.85rem]">
-          Today&apos;s progress
-        </h2>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-white font-sans">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div
+          ref={flyAnchorRef}
+          id="macro-dashboard-fly-anchor"
+          className="min-w-0 shrink-0 px-6 pb-6 pt-8"
+        >
+          <h2 className="text-2xl font-bold leading-none tracking-[-0.03em] text-neutral-900 sm:text-[1.85rem]">
+            Today&apos;s progress
+          </h2>
 
-        <div className="mt-8">
-          <p className="text-sm font-semibold text-neutral-600">
-            Calories
-          </p>
-          <div
-            className="mt-3 h-[18px] w-full max-w-full overflow-hidden rounded-sm border border-[#e8ecf0] bg-[#eef1f5]"
-          >
-            <div
-              ref={calorieFillRef}
-              className="h-full w-0 max-w-full bg-primary"
-            />
+          <div className="mt-8">
+            <p className="text-sm font-semibold text-neutral-600">Calories</p>
+            <div className="mt-3 h-[18px] w-full max-w-full overflow-hidden rounded-full border border-gray-200 bg-gray-100 shadow-inner">
+              <div
+                className="h-full max-w-full rounded-full bg-primary transition-[width] duration-500 ease-out motion-reduce:duration-0"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <p className="mt-3 flex flex-wrap items-baseline gap-x-0 font-sans">
+              <span className="text-lg font-bold tabular-nums text-neutral-900">
+                {formatEnergy(totals.calories)}
+              </span>
+              <span className="text-sm font-medium tabular-nums text-neutral-500">
+                {` / ${formatEnergy(targets.calories)} kcal`}
+              </span>
+            </p>
           </div>
-          <p className="mt-3 font-mono text-[13px] font-semibold tracking-tight text-black sm:text-sm">
-            {formatEnergy(totals.calories)} / {formatEnergy(targets.calories)}{' '}
-            kcal
-          </p>
+
+          <div className="mt-10 border-t border-gray-200 pt-8">
+            <h3 className="text-sm font-semibold tracking-tight text-neutral-700">
+              Macros
+            </h3>
+            <div className="mx-auto mt-8 flex w-full min-w-0 flex-nowrap items-start justify-between gap-x-2 gap-y-8 sm:gap-x-4">
+              <MacroRing
+                label="Protein"
+                current={totals.protein}
+                goal={targets.protein}
+                stroke="var(--primary)"
+                trackStroke="#e8ecf0"
+                dashOffset={protOff}
+              />
+              <MacroRing
+                label="Carbohydrates"
+                current={totals.carbs}
+                goal={targets.carbs}
+                stroke="#292524"
+                trackStroke="#e8ecf0"
+                dashOffset={carbOff}
+              />
+              <MacroRing
+                label="Fat"
+                current={totals.fats}
+                goal={targets.fats}
+                stroke="#44403c"
+                trackStroke="#e8ecf0"
+                dashOffset={fatOff}
+              />
+            </div>
+          </div>
         </div>
 
-        <div className="mt-14 border-t border-[#e2e8f0] pt-10">
-          <h3 className="text-sm font-semibold tracking-tight text-neutral-700">
-            Macros
+        <div className="flex min-h-0 flex-1 flex-col border-t border-gray-200 px-6 pb-4 pt-6">
+          <h3 className="shrink-0 text-sm font-semibold tracking-tight text-neutral-700">
+            Logged Meals
           </h3>
-          <div className="mx-auto mt-8 flex w-full min-w-0 flex-nowrap items-start justify-between gap-x-2 gap-y-8 sm:gap-x-4">
-            <MacroRing
-              label="Protein"
-              current={totals.protein}
-              goal={targets.protein}
-              stroke="var(--primary)"
-              trackStroke="#e8ecf0"
-              ringRef={proteinRingRef}
-              trackRef={proteinTrackRef}
-            />
-            <MacroRing
-              label="Carbohydrates"
-              current={totals.carbs}
-              goal={targets.carbs}
-              stroke="#292524"
-              trackStroke="#e8ecf0"
-              ringRef={carbsRingRef}
-              trackRef={carbsTrackRef}
-            />
-            <MacroRing
-              label="Fat"
-              current={totals.fats}
-              goal={targets.fats}
-              stroke="#44403c"
-              trackStroke="#e8ecf0"
-              ringRef={fatsRingRef}
-              trackRef={fatsTrackRef}
-            />
+          <div className="mt-4 min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
+            {loggedFoods.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50/80 px-4 py-6 text-center text-sm font-medium text-neutral-500">
+                Add meals from the menu to see them here.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {loggedFoods.map((entry) => {
+                  const lineKcal = entry.item.calories * entry.quantity;
+                  return (
+                    <li
+                      key={entry.item.id}
+                      className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5 shadow-sm"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-neutral-900">
+                          {entry.item.name}
+                        </p>
+                        <p className="mt-0.5 text-xs font-medium tabular-nums text-neutral-500">
+                          {Math.round(lineKcal)} kcal
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+                        <button
+                          type="button"
+                          aria-label="Decrease servings"
+                          className="flex size-8 items-center justify-center rounded-md text-base font-semibold text-neutral-700 transition hover:bg-white hover:shadow-sm active:scale-[0.98]"
+                          onClick={() =>
+                            onAdjustQuantity(entry.item.id, -1)
+                          }
+                        >
+                          −
+                        </button>
+                        <span className="min-w-[1.25rem] text-center text-sm font-semibold tabular-nums text-neutral-800">
+                          {entry.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label="Increase servings"
+                          className="flex size-8 items-center justify-center rounded-md text-base font-semibold text-neutral-700 transition hover:bg-white hover:shadow-sm active:scale-[0.98]"
+                          onClick={() =>
+                            onAdjustQuantity(entry.item.id, 1)
+                          }
+                        >
+                          +
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         </div>
       </div>
 
       {onSignOut && (
-        <div className="mt-auto shrink-0 border-t border-solid border-[#e2e8f0] px-6 py-5">
+        <div className="mt-auto shrink-0 border-t border-gray-200 px-6 py-5">
           <button
             type="button"
             onClick={onSignOut}
-            className="rounded-none border border-[#cbd5e1] bg-white px-4 py-2.5 text-xs font-semibold hover:bg-neutral-50"
+            className="rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-xs font-semibold text-neutral-700 shadow-sm transition hover:bg-gray-50 hover:shadow-md active:scale-[0.98]"
           >
             Sign out
           </button>

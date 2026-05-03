@@ -15,8 +15,6 @@ const HOVER_REVEAL_MS = 1500;
 const PLACEHOLDER_MEAL_IMAGE =
   'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=82';
 
-const BORDER_SUBTLE = 'border-[#e2e8f0]';
-
 type MenuMealCardRowProps = {
   item: MenuItem;
   matchLabel: string;
@@ -76,7 +74,7 @@ export function MenuMealCardRow({
     preview && typeof document !== 'undefined'
       ? createPortal(
           <div
-            className="pointer-events-none fixed z-[500] w-[168px] overflow-hidden border border-black bg-white shadow-none"
+            className="pointer-events-none fixed z-[9999] w-[168px] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-md"
             style={{
               left: Math.min(preview.x + 16, window.innerWidth - 184),
               top: Math.min(preview.y + 16, window.innerHeight - 140),
@@ -88,7 +86,7 @@ export function MenuMealCardRow({
               alt=""
               width={168}
               height={112}
-              className="h-[112px] w-[168px] object-cover"
+              className="h-[112px] w-[168px] rounded-lg object-cover"
               draggable={false}
             />
           </div>,
@@ -99,7 +97,7 @@ export function MenuMealCardRow({
   return (
     <>
       <li
-        className={`rounded-none border-b ${BORDER_SUBTLE} ${
+        className={`rounded-lg border border-gray-200 shadow-sm transition-shadow hover:shadow-md ${
           !topPick ? 'bg-white' : ''
         }`}
         style={cardStyle}
@@ -111,7 +109,7 @@ export function MenuMealCardRow({
           onMouseMove={handleMove}
         >
           <div className="min-w-0 cursor-default text-left">
-            <p className="font-bold leading-snug tracking-[-0.02em]">
+            <p className="font-bold leading-snug tracking-[-0.02em] text-neutral-900">
               {item.name}
             </p>
             <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -129,7 +127,7 @@ export function MenuMealCardRow({
             <button
               type="button"
               onClick={(e) => onAddToPlan(e.currentTarget)}
-              className="rounded-none border border-primary bg-primary px-4 py-2.5 text-xs font-bold text-white transition-opacity hover:opacity-90"
+              className="rounded-md border border-primary bg-primary px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:-translate-y-px hover:shadow-md active:scale-[0.98]"
             >
               Add to plan
             </button>

@@ -38,6 +38,12 @@ export interface MenuItem {
   isGlutenFree: boolean;
 }
 
+/** One row in the logged-meals tray; quantity scales macros. */
+export type LoggedFoodEntry = {
+  item: MenuItem;
+  quantity: number;
+};
+
 export interface Macros {
   protein: number;
   carbs: number;

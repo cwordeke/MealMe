@@ -5,18 +5,23 @@ import {
   Goal,
   DietaryPreferences,
   MenuItem,
+  LoggedFoodEntry,
 } from '@/types';
 import { calculateTDEE } from '@/lib/calculations';
-import {
-  isTopPick,
-  matchPercent,
-  mealRecommendationScore,
-  topPickGreenAlpha,
-} from '@/lib/mealRecommendation';
+import { matchPercent, mealRecommendationScore } from '@/lib/mealRecommendation';
 import { MOCK_DINING_DATA } from '@/data/mockDining';
 import { DINING_HALLS } from '@/data/diningHallMeta';
 import { MenuMealCardRow } from '@/components/MenuMealCardRow';
+import { MacroGapSuggestionCard } from '@/components/MacroGapSuggestionCard';
 import { LiveMacroDashboard } from '@/components/LiveMacroDashboard';
+import {
+  buildMealMeMacroSuggestionText,
+  calculateMealScore,
+  computeMissingMacros,
+  normalizeHallScores,
+  selectBestMacroGapItem,
+  weightedTopPickGreenAlpha,
+} from '@/lib/macroGap';
 
 interface DashboardProps {
   stats: UserStats;
@@ -25,9 +30,7 @@ interface DashboardProps {
   onLogout: () => void;
 }
 
-const COLUMN_BORDER =
-  'border-r border-solid border-[#e2e8f0]' as const;
-const BORDER_SUBTLE = 'border-[#e2e8f0]';
+const COLUMN_BORDER = 'border-r border-solid border-gray-200' as const;
 
 function isHallOpenNow(): boolean {
   const h = new Date().getHours();
@@ -39,9 +42,11 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-type ScoredItem = {
+type MenuScoreRow = {
   item: MenuItem;
-  score: number;
+  weightedRaw: number;
+  disqualified: boolean;
+  legacyScore: number;
 };
 
 export default function Dashboard({
@@ -51,13 +56,12 @@ export default function Dashboard({
   onLogout,
 }: DashboardProps) {
   const tdeeResult = useMemo(() => calculateTDEE(stats, goal), [stats, goal]);
-  const [planItems, setPlanItems] = useState<MenuItem[]>([]);
+  const [loggedFoods, setLoggedFoods] = useState<LoggedFoodEntry[]>([]);
   const [selectedLocationKey, setSelectedLocationKey] = useState<string | null>(
     null,
   );
 
   const macroFlyAnchorRef = useRef<HTMLDivElement>(null);
-  const calorieFillRef = useRef<HTMLDivElement>(null);
 
   const recContext = useMemo(
     () => ({ goal, tdee: tdeeResult }),
@@ -65,16 +69,16 @@ export default function Dashboard({
   );
 
   const totals = useMemo(() => {
-    return planItems.reduce(
-      (acc, item) => ({
-        calories: acc.calories + item.calories,
-        protein: acc.protein + item.protein,
-        carbs: acc.carbs + item.carbs,
-        fats: acc.fats + item.fats,
+    return loggedFoods.reduce(
+      (acc, entry) => ({
+        calories: acc.calories + entry.item.calories * entry.quantity,
+        protein: acc.protein + entry.item.protein * entry.quantity,
+        carbs: acc.carbs + entry.item.carbs * entry.quantity,
+        fats: acc.fats + entry.item.fats * entry.quantity,
       }),
       { calories: 0, protein: 0, carbs: 0, fats: 0 },
     );
-  }, [planItems]);
+  }, [loggedFoods]);
 
   const goalCalories = tdeeResult.goalCalories;
   const macroTargets = useMemo(
@@ -92,6 +96,11 @@ export default function Dashboard({
     ],
   );
 
+  const missingMacros = useMemo(
+    () => computeMissingMacros(macroTargets, totals),
+    [macroTargets, totals],
+  );
+
   const drawerFiltered = useMemo(() => {
     if (!selectedLocationKey) return [];
     return MOCK_DINING_DATA.filter((item) => {
@@ -104,40 +113,142 @@ export default function Dashboard({
     });
   }, [selectedLocationKey, preferences]);
 
-  const scoredMenu: ScoredItem[] = useMemo(() => {
-    return drawerFiltered.map((item) => ({
-      item,
-      score: mealRecommendationScore(item, recContext),
-    }));
-  }, [drawerFiltered, recContext]);
-
-  const { topPicks, otherOptions } = useMemo(() => {
-    const tops = scoredMenu
-      .filter((s) => isTopPick(s.score))
-      .sort(
-        (a, b) =>
-          b.score - a.score || a.item.name.localeCompare(b.item.name),
+  const menuScoreRows = useMemo((): MenuScoreRow[] => {
+    return drawerFiltered.map((item) => {
+      const { score, disqualified } = calculateMealScore(
+        item,
+        missingMacros,
+        macroTargets,
+        totals,
       );
-    const rest = scoredMenu
-      .filter((s) => !isTopPick(s.score))
+      return {
+        item,
+        weightedRaw: score,
+        disqualified,
+        legacyScore: mealRecommendationScore(item, recContext),
+      };
+    });
+  }, [drawerFiltered, missingMacros, macroTargets, totals, recContext]);
+
+  const {
+    topPicksWeighted,
+    otherOptions,
+    normalizedWeightById,
+    weightMinRaw,
+    weightMaxRaw,
+  } = useMemo(() => {
+    const eligible = menuScoreRows
+      .filter((r) => !r.disqualified)
+      .sort((a, b) => b.weightedRaw - a.weightedRaw);
+
+    const eff = new Map<string, number>(
+      eligible.map((r) => [r.item.id, r.weightedRaw]),
+    );
+    const { normalized: normalizedWeightById, minRaw, maxRaw } =
+      normalizeHallScores(eff);
+
+    if (eligible.length === 0) {
+      return {
+        topPicksWeighted: [] as MenuScoreRow[],
+        otherOptions: [...menuScoreRows].sort((a, b) =>
+          a.item.name.localeCompare(b.item.name),
+        ),
+        normalizedWeightById,
+        weightMinRaw: minRaw,
+        weightMaxRaw: maxRaw,
+      };
+    }
+
+    const NORM_THRESHOLD = 0.52;
+    const highTier = eligible.filter(
+      (r) =>
+        (normalizedWeightById.get(r.item.id) ?? 0) >= NORM_THRESHOLD,
+    );
+
+    let topPicksWeighted: MenuScoreRow[] =
+      highTier.length >= 3
+        ? highTier.slice(0, 14)
+        : eligible.slice(
+            0,
+            Math.min(14, Math.max(3, eligible.length)),
+          );
+
+    const topIds = new Set(topPicksWeighted.map((r) => r.item.id));
+    const otherOptions = menuScoreRows
+      .filter((r) => !topIds.has(r.item.id))
       .sort((a, b) => a.item.name.localeCompare(b.item.name));
-    return { topPicks: tops, otherOptions: rest };
-  }, [scoredMenu]);
+
+    return {
+      topPicksWeighted,
+      otherOptions,
+      normalizedWeightById,
+      weightMinRaw: minRaw,
+      weightMaxRaw: maxRaw,
+    };
+  }, [menuScoreRows]);
+
+  const macroGapPick = useMemo(() => {
+    if (loggedFoods.length < 1 || drawerFiltered.length === 0) return null;
+    return selectBestMacroGapItem(
+      drawerFiltered,
+      missingMacros,
+      macroTargets,
+      totals,
+    );
+  }, [
+    loggedFoods.length,
+    drawerFiltered,
+    missingMacros,
+    macroTargets,
+    totals,
+  ]);
+
+  const macroGapMessage = useMemo(() => {
+    if (!macroGapPick) return null;
+    return buildMealMeMacroSuggestionText(
+      missingMacros,
+      macroTargets,
+      macroGapPick,
+    );
+  }, [macroGapPick, missingMacros, macroTargets]);
 
   const hallOpen = isHallOpenNow();
 
-  const addToPlanImmediate = useCallback((item: MenuItem) => {
-    setPlanItems((prev) => [
-      ...prev,
-      { ...item, id: `${item.id}-${Date.now()}` },
-    ]);
+  const logFood = useCallback((item: MenuItem) => {
+    setLoggedFoods((prev) => {
+      const idx = prev.findIndex((e) => e.item.id === item.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = {
+          ...next[idx],
+          quantity: next[idx].quantity + 1,
+        };
+        return next;
+      }
+      return [...prev, { item, quantity: 1 }];
+    });
   }, []);
+
+  const adjustLoggedQuantity = useCallback(
+    (menuItemId: string, delta: number) => {
+      setLoggedFoods((prev) => {
+        const idx = prev.findIndex((e) => e.item.id === menuItemId);
+        if (idx < 0) return prev;
+        const q = prev[idx].quantity + delta;
+        if (q <= 0) return prev.filter((_, i) => i !== idx);
+        const next = [...prev];
+        next[idx] = { ...next[idx], quantity: q };
+        return next;
+      });
+    },
+    [],
+  );
 
   const runMacroGhost = useCallback(
     (item: MenuItem, buttonEl: HTMLElement | null) => {
       const anchor = macroFlyAnchorRef.current;
       if (prefersReducedMotion() || !buttonEl || !anchor) {
-        addToPlanImmediate(item);
+        logFood(item);
         return;
       }
 
@@ -178,11 +289,11 @@ export default function Dashboard({
         ease: 'power2.inOut',
         onComplete: () => {
           ghost.remove();
-          addToPlanImmediate(item);
+          logFood(item);
         },
       });
     },
-    [addToPlanImmediate],
+    [logFood],
   );
 
   const selectHall = (hall: (typeof DINING_HALLS)[number]): void => {
@@ -208,7 +319,7 @@ export default function Dashboard({
           className={`flex min-h-0 min-w-0 flex-col bg-white ${COLUMN_BORDER}`}
         >
           <div
-            className={`shrink-0 border-b border-solid border-[#e2e8f0] bg-white px-5 py-4`}
+            className="shrink-0 border-b border-solid border-gray-200 bg-white px-5 py-4"
           >
             <h2 className="text-base font-bold tracking-[-0.03em]">
               Dining halls
@@ -217,7 +328,7 @@ export default function Dashboard({
               Choose a location
             </p>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden px-3 py-3">
             {DINING_HALLS.map((hall) => {
               const active = selectedLocationKey === hall.locationKey;
               return (
@@ -225,10 +336,10 @@ export default function Dashboard({
                   key={hall.id}
                   type="button"
                   onClick={() => selectHall(hall)}
-                  className={`w-full rounded-none border-b ${BORDER_SUBTLE} p-5 text-left transition-colors ${
+                  className={`w-full rounded-lg border border-gray-200 p-4 text-left shadow-sm transition-all hover:-translate-y-px hover:shadow-md active:scale-[0.99] ${
                     active
-                      ? 'border-l-4 border-l-primary bg-green-50 pl-[16px]'
-                      : 'border-l-4 border-l-transparent hover:bg-neutral-50'
+                      ? 'border-primary/40 bg-green-50 ring-2 ring-primary/25'
+                      : 'bg-white hover:bg-gray-50/80'
                   }`}
                 >
                   <h3 className="text-[clamp(0.95rem,1.9vw,1.06rem)] font-bold leading-tight tracking-[-0.03em]">
@@ -252,7 +363,7 @@ export default function Dashboard({
           className={`flex min-h-0 min-w-0 flex-col bg-white ${COLUMN_BORDER}`}
         >
           <header
-            className={`shrink-0 border-b border-solid border-[#e2e8f0] px-5 py-4 md:px-8 md:py-5`}
+            className="shrink-0 border-b border-solid border-gray-200 px-5 py-4 md:px-8 md:py-5"
           >
             <p className="text-sm font-medium text-neutral-500">Menu feed</p>
             {selectedLocationKey && selectedHallMeta ? (
@@ -278,32 +389,55 @@ export default function Dashboard({
               </div>
             ) : (
               <>
-                {scoredMenu.length === 0 ? (
+                {menuScoreRows.length === 0 ? (
                   <p className="py-14 text-center text-sm font-medium text-neutral-500">
                     No items match your dietary filters at this hall.
                   </p>
                 ) : (
                   <div>
-                    {topPicks.length > 0 && (
+                    {loggedFoods.length >= 1 &&
+                      macroGapPick &&
+                      macroGapMessage && (
+                        <MacroGapSuggestionCard
+                          item={macroGapPick}
+                          message={macroGapMessage}
+                          onAddToPlan={(btn) => runMacroGhost(macroGapPick, btn)}
+                        />
+                      )}
+                    {topPicksWeighted.length > 0 && (
                       <section className="mb-14">
                         <h2 className="mb-6 text-lg font-bold tracking-[-0.02em]">
                           Top picks for you
                         </h2>
-                        <ul className="border-t border-black">
-                          {topPicks.map(({ item, score }) => (
-                            <Fragment key={item.id}>
-                              <MenuMealCardRow
-                                item={item}
-                                matchLabel={`${matchPercent(score)}% match`}
-                                showMatch
-                                topPick
-                                cardStyle={{
-                                  backgroundColor: `rgba(34, 197, 94, ${topPickGreenAlpha(score)})`,
-                                }}
-                                onAddToPlan={(btn) => runMacroGhost(item, btn)}
-                              />
-                            </Fragment>
-                          ))}
+                        <ul className="flex flex-col gap-3">
+                          {topPicksWeighted.map((row) => {
+                            const wNorm =
+                              normalizedWeightById.get(row.item.id) ?? 0;
+                            const pct = Math.round(
+                              Math.min(100, Math.max(0, wNorm * 100)),
+                            );
+                            const greenA = weightedTopPickGreenAlpha(
+                              row.weightedRaw,
+                              weightMinRaw,
+                              weightMaxRaw,
+                            );
+                            return (
+                              <Fragment key={row.item.id}>
+                                <MenuMealCardRow
+                                  item={row.item}
+                                  matchLabel={`${pct}% fit`}
+                                  showMatch
+                                  topPick
+                                  cardStyle={{
+                                    backgroundColor: `rgba(34, 197, 94, ${greenA})`,
+                                  }}
+                                  onAddToPlan={(btn) =>
+                                    runMacroGhost(row.item, btn)
+                                  }
+                                />
+                              </Fragment>
+                            );
+                          })}
                         </ul>
                       </section>
                     )}
@@ -313,16 +447,16 @@ export default function Dashboard({
                         All other options
                       </h2>
                       {otherOptions.length === 0 ? (
-                        <p className="border border-black bg-neutral-50 px-4 py-6 text-sm font-medium text-neutral-600">
+                        <p className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-6 text-sm font-medium text-neutral-600 shadow-sm">
                           Every filtered item is already in your top picks.
                         </p>
                       ) : (
-                        <ul className="border-t border-black">
-                          {otherOptions.map(({ item, score }) => (
+                        <ul className="flex flex-col gap-3">
+                          {otherOptions.map(({ item, legacyScore }) => (
                             <Fragment key={item.id}>
                               <MenuMealCardRow
                                 item={item}
-                                matchLabel={`${matchPercent(score)}% match`}
+                                matchLabel={`${matchPercent(legacyScore)}% match`}
                                 showMatch
                                 topPick={false}
                                 onAddToPlan={(btn) =>
@@ -346,9 +480,10 @@ export default function Dashboard({
           <LiveMacroDashboard
             totals={totals}
             targets={macroTargets}
+            loggedFoods={loggedFoods}
+            onAdjustQuantity={adjustLoggedQuantity}
             onSignOut={onLogout}
             flyAnchorRef={macroFlyAnchorRef}
-            calorieFillRef={calorieFillRef}
           />
         </div>
       </div>
