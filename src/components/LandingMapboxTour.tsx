@@ -1,4 +1,9 @@
-import { useEffect, useRef } from 'react';
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+} from 'react';
 import mapboxgl from 'mapbox-gl';
 
 const MAPBOX_TOKEN = import.meta.env.MAPBOX_API_KEY ?? '';
@@ -13,6 +18,11 @@ export interface CampusStop {
   pitch: number;
   bearing: number;
 }
+
+export type LandingMapboxTourHandle = {
+  /** Aggressive zoom-in for the landing-page “dive” transition (runs ~800ms). */
+  dive: () => void;
+};
 
 /** Regional framing around stop 0 so the first fly-in is a short “final approach,” not a globe-level haul. */
 function initialCameraForFirstStop(first: CampusStop): {
@@ -31,6 +41,10 @@ function initialCameraForFirstStop(first: CampusStop): {
 
 function easePower4InOut(t: number): number {
   return t < 0.5 ? 8 * t * t * t * t : 1 - (-2 * t + 2) ** 4 / 2;
+}
+
+function easeCubicOut(t: number): number {
+  return 1 - (1 - t) ** 3;
 }
 
 function addExtrudedBuildings(map: mapboxgl.Map): void {
@@ -240,7 +254,6 @@ function beginCampusTourStep(
   const campus = stops[stopIndex % stops.length]!;
   const isFirstLegFromOverview = stopIndex === 0;
 
-  // Hide entire marker (card + pin) the instant this flight starts — pin should already be faded out
   root.classList.add('mapbox-tour-ui--hiding');
   panel.classList.remove('mapbox-tour-ui__panel--visible');
 
@@ -278,26 +291,54 @@ function beginCampusTourStep(
   });
 }
 
-export default function LandingMapboxTour() {
+const LandingMapboxTour = forwardRef<LandingMapboxTourHandle, Record<string, never>>(
+  function LandingMapboxTour(_, ref) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const abortedRef = useRef(false);
+  const timersRef = useRef<{ hold?: number; pinFallback?: number }>({});
+  const mapInstanceRef = useRef<mapboxgl.Map | null>(null);
+  const markerInstanceRef = useRef<mapboxgl.Marker | null>(null);
+
+  const clearHold = (): void => {
+    const tr = timersRef.current;
+    if (tr.hold !== undefined) {
+      window.clearTimeout(tr.hold);
+      tr.hold = undefined;
+    }
+    if (tr.pinFallback !== undefined) {
+      window.clearTimeout(tr.pinFallback);
+      tr.pinFallback = undefined;
+    }
+  };
+
+  useImperativeHandle(ref, () => ({
+    dive: (): void => {
+      abortedRef.current = true;
+      clearHold();
+      markerInstanceRef.current?.remove();
+      markerInstanceRef.current = null;
+      const map = mapInstanceRef.current;
+      if (!map) return;
+      map.stop();
+      const c = map.getCenter();
+      map.flyTo({
+        center: [c.lng, c.lat],
+        zoom: 19,
+        pitch: Math.min(map.getPitch() + 12, 78),
+        bearing: map.getBearing(),
+        duration: 800,
+        curve: 1.72,
+        speed: 1.35,
+        easing: easeCubicOut,
+        essential: true,
+      });
+    },
+  }));
 
   useEffect(() => {
     abortedRef.current = false;
-    const timersRef: { hold?: number; pinFallback?: number } = {};
     let map: mapboxgl.Map | null = null;
     let marker: mapboxgl.Marker | null = null;
-
-    const clearHold = () => {
-      if (timersRef.hold !== undefined) {
-        window.clearTimeout(timersRef.hold);
-        timersRef.hold = undefined;
-      }
-      if (timersRef.pinFallback !== undefined) {
-        window.clearTimeout(timersRef.pinFallback);
-        timersRef.pinFallback = undefined;
-      }
-    };
 
     const el = wrapperRef.current;
     if (!el) return undefined;
@@ -345,8 +386,7 @@ export default function LandingMapboxTour() {
         attributionControl: false,
       });
 
-      map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'top-right');
-      map.addControl(new mapboxgl.AttributionControl({ compact: true }));
+      mapInstanceRef.current = map;
 
       map.on('style.load', () => {
         map?.setFog({
@@ -382,9 +422,21 @@ export default function LandingMapboxTour() {
           .setLngLat([first.lng, first.lat])
           .addTo(map);
 
+        markerInstanceRef.current = marker;
+
         queueMicrotask(() => {
           if (!map || !marker || abortedRef.current || cancelled) return;
-          beginCampusTourStep(map, marker, root, panel, pin, stops, 0, timersRef, () => abortedRef.current);
+          beginCampusTourStep(
+            map,
+            marker,
+            root,
+            panel,
+            pin,
+            stops,
+            0,
+            timersRef.current,
+            () => abortedRef.current,
+          );
         });
       });
     };
@@ -397,8 +449,10 @@ export default function LandingMapboxTour() {
       clearHold();
       marker?.remove();
       marker = null;
+      markerInstanceRef.current = null;
       map?.remove();
       map = null;
+      mapInstanceRef.current = null;
     };
   }, []);
 
@@ -406,7 +460,7 @@ export default function LandingMapboxTour() {
     <div className="relative flex h-full min-h-[min(68vh,520px)] w-full flex-1 min-h-0">
       <div
         ref={wrapperRef}
-        className="h-full min-h-[320px] w-full min-h-0 overflow-hidden sm:min-h-[430px] lg:min-h-0 lg:border-l lg:border-solid lg:border-[#e2e8f0]"
+        className="landing-mapbox-host h-full min-h-[320px] w-full min-h-0 overflow-hidden sm:min-h-[430px] lg:min-h-0 lg:border-l lg:border-solid lg:border-[#e2e8f0]"
         aria-label="Global campus globe tour"
       />
       <span className="sr-only">
@@ -415,4 +469,8 @@ export default function LandingMapboxTour() {
       </span>
     </div>
   );
-}
+});
+
+LandingMapboxTour.displayName = 'LandingMapboxTour';
+
+export default LandingMapboxTour;

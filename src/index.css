@@ -253,3 +253,13 @@
     opacity: 0;
   }
 }
+
+/* Landing hero map: strip default Mapbox UI chrome (zoom/compass/attribution/logo). Add attribution in UI elsewhere if required by Mapbox ToS. */
+.landing-mapbox-host .mapboxgl-ctrl-top-right,
+.landing-mapbox-host .mapboxgl-ctrl-bottom-right,
+.landing-mapbox-host .mapboxgl-ctrl-bottom-left,
+.landing-mapbox-host .mapboxgl-ctrl-logo,
+.landing-mapbox-host .mapboxgl-ctrl-attrib,
+.landing-mapbox-host .mapboxgl-ctrl-attrib-inner {
+  display: none !important;
+}
