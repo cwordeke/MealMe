@@ -9,6 +9,8 @@ export default defineConfig(({mode}) => {
     plugins: [react(), tailwindcss()],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      /** Client bundle (see `src/vite-env.d.ts`) — set `MAPBOX_API_KEY` in `.env` */
+      'import.meta.env.MAPBOX_API_KEY': JSON.stringify(env.MAPBOX_API_KEY ?? ''),
     },
     resolve: {
       alias: {

@@ -142,3 +142,114 @@
     transform: translate3d(-50%, 0, 0);
   }
 }
+
+/* Mapbox HTML marker — viewport-aligned; instant hide while camera moves */
+.mapbox-tour-ui {
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: max-content;
+  will-change: transform, opacity;
+}
+
+.mapbox-tour-ui--hiding {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  transition: none !important;
+}
+
+.mapbox-tour-ui__panel {
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+  transition:
+    opacity 0.75s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mapbox-tour-ui__panel {
+    transition-duration: 0.12s;
+  }
+}
+
+.mapbox-tour-ui__panel--visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+/* Pin + throbbing rings — fade in slowly once the camera stops; fade out quickly before the next flight */
+.mapbox-tour-ui__pin {
+  position: relative;
+  display: flex;
+  height: 3.5rem;
+  width: 3.5rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 1.15s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mapbox-tour-ui__pin--shown {
+  opacity: 1;
+}
+
+.mapbox-tour-ui__pin--exiting {
+  opacity: 0 !important;
+  transition:
+    opacity 0.58s cubic-bezier(0.45, 0, 0.65, 1) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mapbox-tour-ui__pin {
+    transition-duration: 0.05s;
+  }
+
+  .mapbox-tour-ui__pin--exiting {
+    transition-duration: 0.05s !important;
+  }
+}
+
+.mapbox-tour-ui__ring {
+  pointer-events: none;
+  position: absolute;
+  height: 3.35rem;
+  width: 3.35rem;
+  border-radius: 9999px;
+  border-width: 2px;
+  border-style: solid;
+  border-color: rgb(34 197 94 / 0.72);
+}
+
+.mapbox-tour-ui__ring--a {
+  animation: mapbox-tour-pulse-ring 1.75s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.mapbox-tour-ui__ring--b {
+  border-style: dashed;
+  opacity: 0.92;
+  animation: mapbox-tour-pulse-ring 1.75s cubic-bezier(0.22, 1, 0.36, 1) infinite 0.58s;
+}
+
+@keyframes mapbox-tour-pulse-ring {
+  0% {
+    transform: scale(0.68);
+    opacity: 0.55;
+  }
+  70% {
+    opacity: 0.1;
+  }
+  100% {
+    transform: scale(2.35);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mapbox-tour-ui__ring--a,
+  .mapbox-tour-ui__ring--b {
+    animation: none;
+    opacity: 0;
+  }
+}

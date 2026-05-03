@@ -1,0 +1,62 @@
+[
+    {
+      "school": "Iowa State University",
+      "diningHall": "Seasons Marketplace",
+      "featuredMeal": "Smoked Gochujang Tofu • 22g Prot",
+      "lng": -93.6425,
+      "lat": 42.0221,
+      "zoom": 16.5,
+      "pitch": 65,
+      "bearing": -45
+    },
+    {
+      "school": "Purdue University",
+      "diningHall": "Wiley Dining Court",
+      "featuredMeal": "Steak & Potato Bowl • 45g Prot",
+      "lng": -86.9247,
+      "lat": 40.4286,
+      "zoom": 16.5,
+      "pitch": 60,
+      "bearing": 90
+    },
+    {
+      "school": "University of Illinois",
+      "diningHall": "Ikenberry Dining Center",
+      "featuredMeal": "Grilled Chicken & Quinoa • 38g Prot",
+      "lng": -88.2355,
+      "lat": 40.1037,
+      "zoom": 16.2,
+      "pitch": 68,
+      "bearing": 20
+    },
+    {
+      "school": "University of Wisconsin",
+      "diningHall": "Gordon Avenue Market",
+      "featuredMeal": "Turkey Meatball Bowl • 30g Prot",
+      "lng": -89.3986,
+      "lat": 43.0716,
+      "zoom": 16.4,
+      "pitch": 65,
+      "bearing": -20
+    },
+    {
+      "school": "University of Michigan",
+      "diningHall": "South Quad Dining",
+      "featuredMeal": "Salmon Sushi Bowl • 28g Prot",
+      "lng": -83.7413,
+      "lat": 42.2741,
+      "zoom": 16.5,
+      "pitch": 60,
+      "bearing": 110
+    },
+    {
+      "school": "University of Kansas",
+      "diningHall": "Mrs. E's Dining Commons",
+      "featuredMeal": "Bison Burger Bowl • 42g Prot",
+      "lng": -95.2530,
+      "lat": 38.9535,
+      "zoom": 16.3,
+      "pitch": 65,
+      "bearing": 0
+    }
+  ]

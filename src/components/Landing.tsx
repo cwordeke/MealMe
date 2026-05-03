@@ -1,7 +1,7 @@
 import { motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { ChevronRight } from 'lucide-react';
-import { LandingProductMockup } from '@/components/LandingProductMockup';
+import LandingMapboxTour from '@/components/LandingMapboxTour';
 import { LandingSchoolMarquee } from '@/components/LandingSchoolMarquee';
 
 interface LandingProps {
@@ -66,7 +66,7 @@ export default function Landing({ onStart }: LandingProps) {
               </div>
 
               <p className="max-w-xl text-xl font-medium leading-[1.72] text-gray-500 xl:text-[1.35rem] xl:leading-[1.75]">
-                Set your calories and we&apos;ll show what you can eat on campus today.
+                Set your goals and we&apos;ll show what you can eat on campus today.
               </p>
 
               <Button
@@ -82,15 +82,15 @@ export default function Landing({ onStart }: LandingProps) {
           <LandingSchoolMarquee />
         </section>
 
-        {/* Right — solid brand green, mockup centered */}
-        <section className="relative flex w-full shrink-0 flex-col items-center justify-center overflow-hidden bg-primary px-6 py-16 lg:min-h-[calc(100dvh-4rem)] lg:min-w-0 lg:flex-[1_1_50%] lg:py-12 xl:py-16">
+        {/* Right — Mapbox globe + campus fly-through (pairs with editorial left column) */}
+        <section className="relative flex min-h-0 w-full shrink-0 flex-col overflow-hidden bg-primary p-0 lg:min-h-[calc(100dvh-4rem)] lg:min-w-0 lg:flex-[1_1_50%]">
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.65, delay: 0.1 }}
-            className="relative z-[1] flex w-full shrink-0 items-center justify-center"
+            className="relative z-[1] flex min-h-[min(520px,calc(100dvh-8rem))] w-full flex-1 shrink-0 lg:min-h-[calc(100dvh-4rem)]"
           >
-            <LandingProductMockup />
+            <LandingMapboxTour />
           </motion.div>
         </section>
       </main>
