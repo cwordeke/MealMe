@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { Loader2, Plus, Search, X } from 'lucide-react';
 import {
@@ -50,6 +50,7 @@ const MENU_FEED_HEADER_MAX_H = 288;
 const MENU_FEED_HEADER_MIN_H = 88;
 /** How much menu-pane scroll drives full shrink (0 → fully expanded, ≥ this → collapsed). */
 const MENU_FEED_HEADER_COLLAPSE_SCROLL = 200;
+const ALL_MEAL_PERIODS: MealPeriod[] = [...MEAL_PERIOD_ORDER];
 
 function isHallOpenNow(): boolean {
   const h = new Date().getHours();
@@ -249,9 +250,7 @@ export default function Dashboard({
     menuHeaderShrinkRaf.current = undefined;
     const pane = menuFeedScrollRef.current;
     if (!pane) return;
-    const prefersStill =
-      typeof window !== 'undefined' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const prefersStill = prefersReducedMotion();
     const t = prefersStill
       ? 0
       : Math.min(1, pane.scrollTop / MENU_FEED_HEADER_COLLAPSE_SCROLL);
@@ -272,17 +271,17 @@ export default function Dashboard({
   /** Meal windows this venue publishes in the API (`servedDuring` union on raw menu). */
   const menuPeriodTabsOffered = useMemo((): MealPeriod[] => {
     if (!selectedLocationId || rawLocationMenu === undefined) {
-      return [...MEAL_PERIOD_ORDER];
+      return ALL_MEAL_PERIODS;
     }
     if (rawLocationMenu.length === 0) {
-      return [...MEAL_PERIOD_ORDER];
+      return ALL_MEAL_PERIODS;
     }
     const set = new Set<MealPeriod>();
     for (const item of rawLocationMenu) {
       for (const p of item.servedDuring) set.add(p);
     }
     const offered = MEAL_PERIOD_ORDER.filter((p) => set.has(p));
-    return offered.length > 0 ? offered : [...MEAL_PERIOD_ORDER];
+    return offered.length > 0 ? offered : ALL_MEAL_PERIODS;
   }, [selectedLocationId, rawLocationMenu]);
 
   useEffect(() => {
@@ -404,13 +403,10 @@ export default function Dashboard({
         (normalizedWeightById.get(r.item.id) ?? 0) >= NORM_THRESHOLD,
     );
 
-    let topPicksWeighted: MenuScoreRow[] =
+    const topPicksWeighted: MenuScoreRow[] =
       highTier.length >= 3
         ? highTier.slice(0, 14)
-        : eligible.slice(
-            0,
-            Math.min(14, Math.max(3, eligible.length)),
-          );
+        : eligible.slice(0, Math.min(14, Math.max(3, eligible.length)));
 
     const topIds = new Set(topPicksWeighted.map((r) => r.item.id));
     const otherOptions = menuScoreRows
@@ -898,20 +894,19 @@ export default function Dashboard({
                                       ),
                                     );
                                     return (
-                                      <Fragment key={row.item.id}>
-                                        <MenuMealCardRow
-                                          item={row.item}
-                                          matchLabel={`${pct}% match`}
-                                          showMatch
-                                          onAddToPlan={(btn) =>
-                                            runMacroGhost(
-                                              row.item,
-                                              btn,
-                                              activeMealPeriod,
-                                            )
-                                          }
-                                        />
-                                      </Fragment>
+                                      <MenuMealCardRow
+                                        key={row.item.id}
+                                        item={row.item}
+                                        matchLabel={`${pct}% match`}
+                                        showMatch
+                                        onAddToPlan={(btn) =>
+                                          runMacroGhost(
+                                            row.item,
+                                            btn,
+                                            activeMealPeriod,
+                                          )
+                                        }
+                                      />
                                     );
                                   })}
                                 </ul>
@@ -929,20 +924,19 @@ export default function Dashboard({
                               ) : (
                                 <ul className="flex flex-col gap-3">
                                   {otherOptions.map(({ item, legacyScore }) => (
-                                    <Fragment key={item.id}>
-                                      <MenuMealCardRow
-                                        item={item}
-                                        matchLabel={`${matchPercent(legacyScore)}% match`}
-                                        showMatch
-                                        onAddToPlan={(btn) =>
-                                          runMacroGhost(
-                                            item,
-                                            btn,
-                                            activeMealPeriod,
-                                          )
-                                        }
-                                      />
-                                    </Fragment>
+                                    <MenuMealCardRow
+                                      key={item.id}
+                                      item={item}
+                                      matchLabel={`${matchPercent(legacyScore)}% match`}
+                                      showMatch
+                                      onAddToPlan={(btn) =>
+                                        runMacroGhost(
+                                          item,
+                                          btn,
+                                          activeMealPeriod,
+                                        )
+                                      }
+                                    />
                                   ))}
                                 </ul>
                               )}
