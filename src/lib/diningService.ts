@@ -11,10 +11,6 @@ import type { UniversityTenant } from '@/config/campusLocations';
 import type { MenuItem } from '@/types';
 
 const ISU_PROXY_PATH = '/api/dining';
-const HFS_PROXY_PATH = '/api/hfs';
-const PURDUE_API_BASE = 'https://api.hfs.purdue.edu';
-const BROWSERISH_USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 const PURDUE_ITEM_FETCH_CONCURRENCY = 14;
 
@@ -67,23 +63,6 @@ async function readJsonResponse<T>(
   return res.json() as Promise<T>;
 }
 
-function isLocalhostHost(hostname: string): boolean {
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
-}
-
-function buildPurdueProxyablePath(pathnameWithLeadingSlash: string): string {
-  if (typeof window === 'undefined') {
-    return `${HFS_PROXY_PATH}${pathnameWithLeadingSlash}`;
-  }
-  const origin = window.location?.origin;
-  const hostname = window.location?.hostname ?? '';
-  if (!origin || isLocalhostHost(hostname)) {
-    return `${HFS_PROXY_PATH}${pathnameWithLeadingSlash}`;
-  }
-  const upstream = `${PURDUE_API_BASE}${pathnameWithLeadingSlash}`;
-  return `/api/proxy?url=${encodeURIComponent(upstream)}`;
-}
-
 function canonicalizePurdueLocationName(locationName: string): string {
   const normalized = locationName.trim();
   const byKey = PURDUE_CANONICAL_LOCATION_NAMES.get(normalized.toLowerCase());
@@ -98,7 +77,9 @@ export async function fetchIsuSingleLocationRaw(
   slug: string,
   signal?: AbortSignal,
 ): Promise<unknown> {
-  const url = `${ISU_PROXY_PATH}?slug=${encodeURIComponent(slug)}`;
+  const url =
+    `${ISU_PROXY_PATH}?slug=${encodeURIComponent(slug)}` +
+    '&university=ISU';
   const res = await fetch(url, { signal });
   return readJsonResponse(res, 'Dining menu request failed');
 }
@@ -139,14 +120,12 @@ async function fetchPurdueItemMacros(
   itemId: string,
   signal?: AbortSignal,
 ): Promise<{ calories: number; protein: number; carbs: number; fats: number } | null> {
-  const url = buildPurdueProxyablePath(`/menus/v2/Items/${encodeURIComponent(itemId)}`);
+  const url =
+    `${ISU_PROXY_PATH}?university=PURDUE&itemId=${encodeURIComponent(itemId)}` +
+    '&slug=ignored';
   try {
     const res = await fetch(url, {
       signal,
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': BROWSERISH_USER_AGENT,
-      },
     });
     const body = await readJsonResponse<PurdueItemDetailResponse>(
       res,
@@ -187,14 +166,11 @@ export async function fetchPurdueLocationMenuItems(
   const d = calendarDate ?? new Date();
   const dateStr = d.toISOString().split('T')[0];
   const canonicalLocation = canonicalizePurdueLocationName(apiLocationName);
-  const locSeg = encodeURIComponent(canonicalLocation);
-  const menuUrl = buildPurdueProxyablePath(`/menus/v2/locations/${locSeg}/${dateStr}`);
+  const menuUrl =
+    `${ISU_PROXY_PATH}?slug=${encodeURIComponent(canonicalLocation)}` +
+    `&university=PURDUE&date=${encodeURIComponent(dateStr)}`;
   const res = await fetch(menuUrl, {
     signal,
-    headers: {
-      Accept: 'application/json',
-      'User-Agent': BROWSERISH_USER_AGENT,
-    },
   });
   const raw = await readJsonResponse<PurdueLocationMenuPayload>(
     res,
