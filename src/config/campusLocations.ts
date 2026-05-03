@@ -1,31 +1,49 @@
+import type { CampusId } from '@/types';
+
+/** Tenant key for bundled campus configs + dining API routing. */
+export type UniversityTenant = 'ISU' | 'PURDUE';
+
+/** Stored onboarding selection → which dining backend to use. */
+export type UserUniversity = UniversityTenant;
+
+export function userUniversityFromCampusId(campusId: CampusId): UserUniversity {
+  return campusId === 'purdue' ? 'PURDUE' : 'ISU';
+}
+
 export type IsuDiningCategory =
   | 'DINING CENTERS'
   | 'FAST CASUAL'
   | 'CAFES & MARKETS';
 
-/**
- * Local ISU Dining master list for the Dashboard sidebar + API.
- * `id` selects the venue and matches `MenuItem.location` after fetch.
- *
- * **`slug`** is the query value for `/wp-json/dining/menu-hours/get-single-location/?slug=…`.
- * Iowa State’s WordPress slugs often differ from short URLs (e.g. UDCC maps to Union Drive Marketplace).
- */
-export interface IsuDiningLocationConfig {
+export type PurdueDiningCategory = 'DINING COURTS';
+
+export type DiningLocationCategory =
+  | IsuDiningCategory
+  | PurdueDiningCategory;
+
+export interface CampusDiningLocationConfig {
   id: string;
   name: string;
-  category: IsuDiningCategory;
+  category: DiningLocationCategory;
+  /**
+   * ISU: WordPress slug for `get-single-location`.
+   * Purdue: short dining-court name in HFS URLs (e.g. `Wiley`, `Ford`).
+   */
   slug: string;
 }
 
-/** Sidebar / render order */
+/** ISU sidebar / render order */
 export const ISU_LOCATION_CATEGORY_ORDER: readonly IsuDiningCategory[] = [
   'DINING CENTERS',
   'FAST CASUAL',
   'CAFES & MARKETS',
 ];
 
-export const ISU_DINING_LOCATIONS: readonly IsuDiningLocationConfig[] = [
-  /* DINING CENTERS */
+export const PURDUE_LOCATION_CATEGORY_ORDER: readonly PurdueDiningCategory[] = [
+  'DINING COURTS',
+];
+
+const ISU_DINING_LIST: readonly CampusDiningLocationConfig[] = [
   {
     id: 'udcc',
     name: 'UDCC',
@@ -50,7 +68,6 @@ export const ISU_DINING_LOCATIONS: readonly IsuDiningLocationConfig[] = [
     category: 'DINING CENTERS',
     slug: 'friley-windows-2-2',
   },
-  /* FAST CASUAL */
   {
     id: 'hawthorn',
     name: 'Hawthorn',
@@ -81,7 +98,6 @@ export const ISU_DINING_LOCATIONS: readonly IsuDiningLocationConfig[] = [
     category: 'FAST CASUAL',
     slug: 'lance-and-ellies',
   },
-  /* CAFES & MARKETS */
   {
     id: 'bookends-cafe',
     name: 'Bookends Café',
@@ -125,3 +141,58 @@ export const ISU_DINING_LOCATIONS: readonly IsuDiningLocationConfig[] = [
     slug: '290-2',
   },
 ];
+
+/** Purdue residential dining courts (HFS API location names). */
+const PURDUE_DINING_LIST: readonly CampusDiningLocationConfig[] = [
+  {
+    id: 'purdue-wiley',
+    name: 'Wiley',
+    category: 'DINING COURTS',
+    slug: 'Wiley',
+  },
+  {
+    id: 'purdue-ford',
+    name: 'Ford',
+    category: 'DINING COURTS',
+    slug: 'Ford',
+  },
+  {
+    id: 'purdue-earhart',
+    name: 'Earhart',
+    category: 'DINING COURTS',
+    slug: 'Earhart',
+  },
+  {
+    id: 'purdue-hillenbrand',
+    name: 'Hillenbrand',
+    category: 'DINING COURTS',
+    slug: 'Hillenbrand',
+  },
+  {
+    id: 'purdue-windsor',
+    name: 'Windsor',
+    category: 'DINING COURTS',
+    slug: 'Windsor',
+  },
+];
+
+export const campusData: Readonly<
+  Record<UniversityTenant, readonly CampusDiningLocationConfig[]>
+> = {
+  ISU: ISU_DINING_LIST,
+  PURDUE: PURDUE_DINING_LIST,
+};
+
+/** Legacy export — ISU-only list shape used before multi-tenant refactor. */
+export const ISU_DINING_LOCATIONS: readonly CampusDiningLocationConfig[] =
+  campusData.ISU;
+
+export type IsuDiningLocationConfig = CampusDiningLocationConfig;
+
+export function diningCategoryOrderForTenant(
+  tenant: UniversityTenant,
+): readonly string[] {
+  return tenant === 'PURDUE'
+    ? PURDUE_LOCATION_CATEGORY_ORDER
+    : ISU_LOCATION_CATEGORY_ORDER;
+}

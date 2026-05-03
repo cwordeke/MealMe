@@ -13,6 +13,11 @@ const diningMenuProxy = {
       return `/wp-json/dining/menu-hours/get-single-location/${query}`;
     },
   },
+  '^/api/hfs': {
+    target: 'https://api.hfs.purdue.edu',
+    changeOrigin: true,
+    rewrite: (p: string) => p.replace(/^\/api\/hfs/, ''),
+  },
 } as const;
 
 export default defineConfig(({mode}) => {

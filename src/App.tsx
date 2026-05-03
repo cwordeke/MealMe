@@ -110,6 +110,7 @@ export default function App() {
           stats={userData.stats}
           goal={userData.goal}
           preferences={userData.preferences}
+          campusId={userData.campusId}
           onLogout={handleLogout}
         />
       )}

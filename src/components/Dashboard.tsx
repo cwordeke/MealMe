@@ -5,6 +5,7 @@ import {
   UserStats,
   Goal,
   DietaryPreferences,
+  CampusId,
   MenuItem,
   LoggedFoodEntry,
   MealPeriod,
@@ -14,11 +15,13 @@ import {
 import { calculateTDEE } from '@/lib/calculations';
 import { matchPercent, mealRecommendationScore } from '@/lib/mealRecommendation';
 import {
-  ISU_DINING_LOCATIONS,
-  ISU_LOCATION_CATEGORY_ORDER,
-  type IsuDiningLocationConfig,
+  campusData,
+  diningCategoryOrderForTenant,
+  userUniversityFromCampusId,
+  type CampusDiningLocationConfig,
+  type UniversityTenant,
 } from '@/config/campusLocations';
-import { fetchIsuLocationMenuItems } from '@/lib/diningService';
+import { fetchCampusLocationMenuItems } from '@/lib/diningService';
 import { MenuMealCardRow } from '@/components/MenuMealCardRow';
 import { MacroGapSuggestionCard } from '@/components/MacroGapSuggestionCard';
 import { LiveMacroDashboard } from '@/components/LiveMacroDashboard';
@@ -34,6 +37,8 @@ interface DashboardProps {
   stats: UserStats;
   goal: Goal;
   preferences: DietaryPreferences;
+  /** From onboarding "Where do you eat?" — drives tenant + sidebar venues. */
+  campusId: CampusId;
   onLogout: () => void;
 }
 
@@ -94,8 +99,14 @@ export default function Dashboard({
   stats,
   goal,
   preferences,
+  campusId,
   onLogout,
 }: DashboardProps) {
+  const userUniversity: UniversityTenant =
+    userUniversityFromCampusId(campusId);
+
+  const diningLocations = campusData[userUniversity];
+  const locationCategoryOrder = diningCategoryOrderForTenant(userUniversity);
   const tdeeResult = useMemo(() => calculateTDEE(stats, goal), [stats, goal]);
   const [loggedFoods, setLoggedFoods] = useState<LoggedFoodEntry[]>([]);
   const [activeMealPeriod, setActiveMealPeriod] = useState<MealPeriod>(
@@ -165,14 +176,25 @@ export default function Dashboard({
   );
 
   useEffect(() => {
+    setSelectedLocationId(null);
+    setLiveMenuByHall({});
+    setMenuError(null);
+    setMenuLoading(false);
+  }, [campusId]);
+
+  useEffect(() => {
     if (!selectedLocationId) {
       setMenuLoading(false);
       setMenuError(null);
       return;
     }
 
-    const loc = ISU_DINING_LOCATIONS.find((l) => l.id === selectedLocationId);
-    if (!loc) return;
+    const loc = diningLocations.find((l) => l.id === selectedLocationId);
+    if (!loc) {
+      setMenuLoading(false);
+      setMenuError(null);
+      return;
+    }
 
     let cancelled = false;
     const ac = new AbortController();
@@ -180,7 +202,7 @@ export default function Dashboard({
     setMenuLoading(true);
     setMenuError(null);
 
-    fetchIsuLocationMenuItems(loc.slug, loc.id, ac.signal)
+    fetchCampusLocationMenuItems(userUniversity, loc.slug, loc.id, ac.signal)
       .then((items) => {
         if (cancelled) return;
         setLiveMenuByHall((prev) => ({ ...prev, [loc.id]: items }));
@@ -200,7 +222,7 @@ export default function Dashboard({
       cancelled = true;
       ac.abort();
     };
-  }, [selectedLocationId]);
+  }, [selectedLocationId, userUniversity, diningLocations]);
 
   useEffect(() => {
     setHallHeaderImageFailed(false);
@@ -547,12 +569,12 @@ export default function Dashboard({
     [logFood],
   );
 
-  const selectHall = (loc: IsuDiningLocationConfig): void => {
+  const selectHall = (loc: CampusDiningLocationConfig): void => {
     setSelectedLocationId(loc.id);
   };
 
   const selectedHallMeta = selectedLocationId
-    ? ISU_DINING_LOCATIONS.find((l) => l.id === selectedLocationId)
+    ? diningLocations.find((l) => l.id === selectedLocationId)
     : undefined;
 
   const menuFeedHeaderHeightPx = useMemo(
@@ -598,8 +620,8 @@ export default function Dashboard({
             </p>
           </div>
           <div className="scrollbar-hide min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-3">
-            {ISU_LOCATION_CATEGORY_ORDER.map((category, ci) => {
-              const halls = ISU_DINING_LOCATIONS.filter(
+            {locationCategoryOrder.map((category, ci) => {
+              const halls = diningLocations.filter(
                 (l) => l.category === category,
               );
               if (halls.length === 0) return null;
