@@ -107,11 +107,11 @@ export default function PlanPersonalizingLoader({
 
   return (
     <div className="flex min-h-[100dvh] w-full flex-col overflow-hidden bg-white font-sans text-neutral-900">
-      <h1 className="px-4 pt-[max(0.75rem,env(safe-area-inset-top))] text-center text-lg font-bold leading-snug tracking-tight text-neutral-800 sm:text-xl">
+      <h1 className="px-4 pb-3 pt-[max(1.75rem,env(safe-area-inset-top))] text-center text-xl font-bold leading-tight tracking-tight text-neutral-800 sm:pb-4 sm:pt-10 sm:text-2xl">
         Personalizing your plan...
       </h1>
 
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-6 sm:px-8">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-1 sm:px-8 sm:pt-2">
         <div className="flex w-full max-w-3xl flex-col items-center">
           <div
             className="relative aspect-square w-64 min-h-64 min-w-64 shrink-0 sm:h-80 sm:w-80 sm:min-h-80 sm:min-w-80 md:h-96 md:w-96 md:min-h-96 md:min-w-96"

@@ -260,8 +260,124 @@
 .landing-mapbox-host .mapboxgl-ctrl-bottom-left,
 .landing-mapbox-host .mapboxgl-ctrl-logo,
 .landing-mapbox-host .mapboxgl-ctrl-attrib,
-.landing-mapbox-host .mapboxgl-ctrl-attrib-inner {
+.landing-mapbox-host .mapboxgl-ctrl-attrib-inner,
+/* Dashboard map: hide logo/other chrome; keep attribution bottom-right (clear of Profile Orb HUD). */
+.dashboard-command-map-host .mapboxgl-ctrl-top-right,
+.dashboard-command-map-host .mapboxgl-ctrl-bottom-left,
+.dashboard-command-map-host .mapboxgl-ctrl-logo {
   display: none !important;
+}
+
+.dashboard-command-map-host .mapboxgl-ctrl-bottom-right {
+  bottom: 12px !important;
+  right: 12px !important;
+  left: auto !important;
+}
+
+.dashboard-command-map-host .mapboxgl-ctrl-attrib,
+.dashboard-command-map-host .mapboxgl-ctrl-attrib-inner {
+  background: rgb(255 255 255 / 0.92) !important;
+  border: 1px solid rgb(229 231 235) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-size: 10px !important;
+  font-family: var(--font-sans) !important;
+  padding: 4px 8px !important;
+  margin: 0 !important;
+}
+
+/* Dashboard: recommended dining hall pulse on map */
+.mealme-map-pulse-wrap {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  pointer-events: none;
+}
+
+.mealme-map-pulse-ring {
+  position: absolute;
+  inset: 0;
+  border: 2px solid rgb(34 197 94);
+  border-radius: 9999px;
+  animation: mealme-map-pulse-ring 1.85s ease-out infinite;
+}
+
+.mealme-map-pulse-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border: 1px solid rgb(0 0 0);
+  background: rgb(34 197 94);
+  border-radius: 9999px;
+}
+
+@keyframes mealme-map-pulse-ring {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.95;
+  }
+  65% {
+    transform: scale(1.25);
+    opacity: 0.25;
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mealme-map-pulse-ring {
+    animation: none;
+    opacity: 0.5;
+    transform: scale(1);
+  }
+}
+
+/* GSAP “meal absorption” green streak (dashboard only; created in JS) */
+.mealme-absorption-streak {
+  position: fixed;
+  z-index: 600;
+  width: 112px;
+  height: 7px;
+  border-radius: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    rgb(220 252 231),
+    rgb(74 222 128) 35%,
+    rgb(34 197 94) 65%,
+    rgb(21 128 61)
+  );
+  box-shadow:
+    0 0 18px rgb(34 197 94 / 0.95),
+    0 0 6px rgb(34 197 94 / 0.7);
+  transform-origin: 50% 50%;
+}
+
+/* Macro Command Center — flying ghost of meal macros */
+.mealme-macro-ghost {
+  position: fixed;
+  z-index: 615;
+  max-width: 220px;
+  pointer-events: none;
+  padding: 6px 10px;
+  border: 1px solid rgb(21 128 61);
+  background: rgb(240 253 244 / 0.96);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: rgb(22 101 52);
+  box-shadow:
+    0 0 22px rgb(34 197 94 / 0.58),
+    0 0 12px rgb(34 197 94 / 0.38);
+  white-space: nowrap;
+  border-radius: 0;
 }
 
 /* Onboarding final CTA — subtle emphasis pulse (respect reduced motion) */

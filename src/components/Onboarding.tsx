@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useForm } from 'react-hook-form';
+import { useForm, type UseFormReturn } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,19 @@ const hwSchema = z.object({
   weight: z.number().min(50).max(500),
   height: z.number().min(36).max(96),
 });
+
+function inchesFromFtIn(ft: number, inch: number): number {
+  const i = Math.min(11, Math.max(0, Math.round(inch)));
+  const f = Math.max(0, Math.round(ft));
+  return f * 12 + i;
+}
+
+function ftInFromInches(totalInches: number): { ft: number; inch: number } {
+  const t = Math.round(totalInches);
+  const ft = Math.floor(t / 12);
+  const inch = t - ft * 12;
+  return { ft, inch: Math.min(11, Math.max(0, inch)) };
+}
 
 const fullStatsSchema = z.object({
   weight: z.number().min(50).max(500),
@@ -102,6 +115,104 @@ const quizStepVariants = {
     },
   },
 };
+
+type HwForm = z.infer<typeof hwSchema>;
+
+function StepHeightFtIn({
+  form,
+  flatInput,
+  flatPrimaryBtn,
+  heightErr,
+  onContinue,
+}: {
+  form: UseFormReturn<HwForm>;
+  flatInput: string;
+  flatPrimaryBtn: string;
+  heightErr: boolean;
+  onContinue: () => void;
+}) {
+  const h = form.watch('height');
+  const total =
+    typeof h === 'number' && !Number.isNaN(h) ? h : 70;
+  const { ft, inch } = ftInFromInches(total);
+
+  const applyFtIn = (nextFt: number, nextIn: number): void => {
+    form.setValue('height', inchesFromFtIn(nextFt, nextIn), {
+      shouldValidate: true,
+      shouldDirty: true,
+    });
+  };
+
+  const errBorder = heightErr && 'border-red-500 focus:border-red-500';
+
+  return (
+    <div className="flex flex-col gap-12">
+      <QuizQuestionHeader title="What is your height?" />
+      <div>
+        <div className="flex gap-3 sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <label
+              htmlFor="onb-h-ft"
+              className="mb-1.5 block text-center text-[11px] font-bold uppercase tracking-wider text-neutral-500"
+            >
+              Ft
+            </label>
+            <input
+              id="onb-h-ft"
+              type="number"
+              inputMode="numeric"
+              min={3}
+              max={8}
+              autoComplete="off"
+              value={ft}
+              onChange={(e) => {
+                const v = e.target.value;
+                const nextFt =
+                  v === '' ? 0 : Math.min(8, Math.max(0, parseInt(v, 10) || 0));
+                applyFtIn(nextFt, inch);
+              }}
+              className={cn(flatInput, errBorder)}
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <label
+              htmlFor="onb-h-in"
+              className="mb-1.5 block text-center text-[11px] font-bold uppercase tracking-wider text-neutral-500"
+            >
+              In
+            </label>
+            <input
+              id="onb-h-in"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={11}
+              autoComplete="off"
+              value={inch}
+              onChange={(e) => {
+                const v = e.target.value;
+                const nextIn =
+                  v === ''
+                    ? 0
+                    : Math.min(11, Math.max(0, parseInt(v, 10) || 0));
+                applyFtIn(ft, nextIn);
+              }}
+              className={cn(flatInput, errBorder)}
+            />
+          </div>
+        </div>
+        {heightErr && (
+          <p className="mt-2 text-center text-xs font-semibold text-red-600">
+            Enter a height between 3 ft and 8 ft (36–96 in).
+          </p>
+        )}
+      </div>
+      <Button type="button" onClick={onContinue} className={cn(flatPrimaryBtn)}>
+        Continue
+      </Button>
+    </div>
+  );
+}
 
 export default function Onboarding({ onComplete, onCancel }: OnboardingProps) {
   const totalSteps = 8;
@@ -289,42 +400,17 @@ export default function Onboarding({ onComplete, onCancel }: OnboardingProps) {
                 )}
 
                 {step === 4 && (
-                  <div className="flex flex-col gap-12">
-                    <QuizQuestionHeader title="What is your height?" />
-                    <div>
-                      <label htmlFor="onb-h" className="sr-only">
-                        Height in inches
-                      </label>
-                      <input
-                        id="onb-h"
-                        type="number"
-                        inputMode="decimal"
-                        placeholder="70"
-                        autoComplete="off"
-                        className={cn(
-                          flatInput,
-                          heightErr && 'border-red-500 focus:border-red-500',
-                        )}
-                        {...statsForm.register('height', { valueAsNumber: true })}
-                      />
-                      {heightErr && (
-                        <p className="mt-2 text-center text-xs font-semibold text-red-600">
-                          Enter a height between 36 and 96 inches.
-                        </p>
-                      )}
-                    </div>
-                    <Button
-                      type="button"
-                      onClick={() => {
-                        void statsForm.trigger('height').then((ok) => {
-                          if (ok) nextStep();
-                        });
-                      }}
-                      className={cn(flatPrimaryBtn)}
-                    >
-                      Continue
-                    </Button>
-                  </div>
+                  <StepHeightFtIn
+                    form={statsForm}
+                    flatInput={flatInput}
+                    flatPrimaryBtn={flatPrimaryBtn}
+                    heightErr={!!heightErr}
+                    onContinue={() => {
+                      void statsForm.trigger('height').then((ok) => {
+                        if (ok) nextStep();
+                      });
+                    }}
+                  />
                 )}
 
                 {step === 5 && (
@@ -434,14 +520,11 @@ export default function Onboarding({ onComplete, onCancel }: OnboardingProps) {
                     <Button
                       type="button"
                       onClick={handleComplete}
-                      className={cn(
-                        flatPrimaryBtn,
-                        'py-8 text-base uppercase tracking-[0.12em] sm:py-9 sm:text-lg',
-                      )}
+                      className={cn(flatPrimaryBtn, 'normal-case tracking-tight')}
                     >
-                      <span className="flex w-full items-center justify-center gap-3">
-                        Calibrate Engine
-                        <ArrowRight className="size-6 shrink-0" strokeWidth={2.5} />
+                      <span className="flex w-full items-center justify-center gap-2">
+                        Personalize Meals
+                        <ArrowRight className="size-5 shrink-0" strokeWidth={2.5} />
                       </span>
                     </Button>
                   </div>
