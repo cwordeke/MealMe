@@ -36,7 +36,14 @@ export interface MenuItem {
   isVegan: boolean;
   isVegetarian: boolean;
   isGlutenFree: boolean;
+  /** Entree-style plate (Target Match / top picks only use these). */
+  isMainMeal: boolean;
+  /** Condiments, sides under 150 kcal, sauces, etc. */
+  isAddOn: boolean;
 }
+
+/** Parsed row before meal classification (live API + sanitizer). */
+export type MenuItemBase = Omit<MenuItem, 'isMainMeal' | 'isAddOn'>;
 
 /** One row in the logged-meals tray; quantity scales macros. */
 export type LoggedFoodEntry = {

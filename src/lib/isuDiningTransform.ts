@@ -1,4 +1,4 @@
-import type { MenuItem } from '@/types';
+import type { MenuItemBase } from '@/types';
 
 type IsuTrait = { name?: string; typeName?: string };
 
@@ -86,20 +86,21 @@ function slugPart(s: string): string {
 }
 
 /**
- * Walks Iowa State `get-single-location` JSON and maps menu rows to {@link MenuItem}.
+ * Walks Iowa State `get-single-location` JSON and maps menu rows to {@link MenuItemBase}.
+ * Pipe through `sanitizeAndCategorizeMenu` before displaying or scoring.
  */
 export function transformIsuLocationPayload(
   payload: unknown,
   locationKey: string,
   apiSlug: string,
-): MenuItem[] {
+): MenuItemBase[] {
   if (!Array.isArray(payload) || payload.length === 0) return [];
 
   const loc = payload[0] as RawLocation;
   if (!loc || loc.slug === 'hours-menus') return [];
 
   const menus = Array.isArray(loc.menus) ? loc.menus : [];
-  const out: MenuItem[] = [];
+  const out: MenuItemBase[] = [];
   let seq = 0;
 
   for (const menu of menus) {

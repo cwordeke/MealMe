@@ -68,6 +68,11 @@ export function calculateMealScore(
   targets: MacroBreakdown,
   logged: MacroBreakdown,
 ): MealScoreResult {
+  // Target Match / weighted scoring applies only to main plates—not sauces or condiments.
+  if (!meal.isMainMeal) {
+    return { score: -1e15 - 10_000, disqualified: true };
+  }
+
   // --- Strict penalties (macros and calories cannot exceed what's left)
   let overshootPenalty = 0;
   let disqualified = false;
@@ -206,6 +211,8 @@ export function selectBestMacroGapItem(
   let bestDisqScore = -Infinity;
 
   for (const item of items) {
+    if (!item.isMainMeal) continue;
+
     const { score, disqualified } = calculateMealScore(
       item,
       remaining,

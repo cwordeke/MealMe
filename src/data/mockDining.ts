@@ -1,6 +1,7 @@
-import { MenuItem } from '../types';
+import type { MenuItem, MenuItemBase } from '../types';
+import { sanitizeAndCategorizeMenu } from '@/lib/menuSanitize';
 
-export const MOCK_DINING_DATA: MenuItem[] = [
+const MOCK_DINING_DATA_RAW: MenuItemBase[] = [
   // UDCC - FUSE (Customizable/Global)
   {
     id: 'udcc-fuse-chicken',
@@ -373,5 +374,8 @@ export const MOCK_DINING_DATA: MenuItem[] = [
     isVegan: true,
     isVegetarian: true,
     isGlutenFree: true,
-  }
+  },
 ];
+
+export const MOCK_DINING_DATA: MenuItem[] =
+  sanitizeAndCategorizeMenu(MOCK_DINING_DATA_RAW);

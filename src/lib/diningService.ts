@@ -1,4 +1,6 @@
+/** Iowa State live menu pipeline: fetch → parse → sanitize (purge, dedupe, categorize). */
 import { transformIsuLocationPayload } from '@/lib/isuDiningTransform';
+import { sanitizeAndCategorizeMenu } from '@/lib/menuSanitize';
 import type { MenuItem } from '@/types';
 
 const PROXY_PATH = '/api/dining';
@@ -25,5 +27,6 @@ export async function fetchIsuLocationMenuItems(
   signal?: AbortSignal,
 ): Promise<MenuItem[]> {
   const raw = await fetchIsuSingleLocationRaw(apiSlug, signal);
-  return transformIsuLocationPayload(raw, locationKey, apiSlug);
+  const parsed = transformIsuLocationPayload(raw, locationKey, apiSlug);
+  return sanitizeAndCategorizeMenu(parsed);
 }
