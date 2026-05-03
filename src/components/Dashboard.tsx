@@ -21,7 +21,7 @@ import {
   type CampusDiningLocationConfig,
   type UniversityTenant,
 } from '@/config/campusLocations';
-import { fetchCampusLocationMenuItems } from '@/lib/diningService';
+import { DiningMenuError, fetchCampusLocationMenuItems } from '@/lib/diningService';
 import { MenuMealCardRow } from '@/components/MenuMealCardRow';
 import { MacroGapSuggestionCard } from '@/components/MacroGapSuggestionCard';
 import { LiveMacroDashboard } from '@/components/LiveMacroDashboard';
@@ -211,7 +211,11 @@ export default function Dashboard({
         if (cancelled) return;
         if (err instanceof DOMException && err.name === 'AbortError') return;
         const msg =
-          err instanceof Error ? err.message : 'Could not load dining menu';
+          err instanceof DiningMenuError
+            ? err.userMessage
+            : err instanceof Error
+              ? err.message
+              : 'Could not load dining menu';
         setMenuError(msg);
       })
       .finally(() => {

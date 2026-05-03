@@ -12,24 +12,82 @@ import type { MenuItem } from '@/types';
 
 const ISU_PROXY_PATH = '/api/dining';
 const HFS_PROXY_PATH = '/api/hfs';
+const PURDUE_API_BASE = 'https://api.hfs.purdue.edu';
+const BROWSERISH_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 const PURDUE_ITEM_FETCH_CONCURRENCY = 14;
 
-function formatLocalYmd(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+const PURDUE_CANONICAL_LOCATION_NAMES = new Map<string, string>([
+  ['wiley', 'Wiley'],
+  ['ford', 'Ford'],
+  ['hillenbrand', 'Hillenbrand'],
+  ['earhart', 'Earhart'],
+  ['windsor', 'Windsor'],
+]);
+
+type DiningMenuErrorCode = 'LOCATION_CLOSED' | 'NO_MENU_FOUND' | 'REQUEST_FAILED';
+
+export class DiningMenuError extends Error {
+  readonly status: number | null;
+  readonly code: DiningMenuErrorCode;
+  readonly userMessage: string;
+
+  constructor(
+    message: string,
+    opts: { status?: number | null; code?: DiningMenuErrorCode; userMessage?: string } = {},
+  ) {
+    super(message);
+    this.name = 'DiningMenuError';
+    this.status = opts.status ?? null;
+    this.code = opts.code ?? 'REQUEST_FAILED';
+    this.userMessage = opts.userMessage ?? 'No Menu Found';
+  }
 }
 
 async function readJsonResponse<T>(
   res: Response,
   errorLabel: string,
+  fallbackUserMessage = 'No Menu Found',
 ): Promise<T> {
   if (!res.ok) {
-    throw new Error(`${errorLabel} (${res.status})`);
+    if (res.status === 404) {
+      throw new DiningMenuError(`${errorLabel} (${res.status})`, {
+        status: res.status,
+        code: 'LOCATION_CLOSED',
+        userMessage: 'Location Closed for Summer',
+      });
+    }
+    throw new DiningMenuError(`${errorLabel} (${res.status})`, {
+      status: res.status,
+      code: 'REQUEST_FAILED',
+      userMessage: fallbackUserMessage,
+    });
   }
   return res.json() as Promise<T>;
+}
+
+function isLocalhostHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
+function buildPurdueProxyablePath(pathnameWithLeadingSlash: string): string {
+  if (typeof window === 'undefined') {
+    return `${HFS_PROXY_PATH}${pathnameWithLeadingSlash}`;
+  }
+  const origin = window.location?.origin;
+  const hostname = window.location?.hostname ?? '';
+  if (!origin || isLocalhostHost(hostname)) {
+    return `${HFS_PROXY_PATH}${pathnameWithLeadingSlash}`;
+  }
+  const upstream = `${PURDUE_API_BASE}${pathnameWithLeadingSlash}`;
+  return `/api/proxy?url=${encodeURIComponent(upstream)}`;
+}
+
+function canonicalizePurdueLocationName(locationName: string): string {
+  const normalized = locationName.trim();
+  const byKey = PURDUE_CANONICAL_LOCATION_NAMES.get(normalized.toLowerCase());
+  return byKey ?? normalized;
 }
 
 /**
@@ -81,15 +139,19 @@ async function fetchPurdueItemMacros(
   itemId: string,
   signal?: AbortSignal,
 ): Promise<{ calories: number; protein: number; carbs: number; fats: number } | null> {
-  const url = `${HFS_PROXY_PATH}/menus/v2/Items/${encodeURIComponent(itemId)}`;
+  const url = buildPurdueProxyablePath(`/menus/v2/Items/${encodeURIComponent(itemId)}`);
   try {
     const res = await fetch(url, {
       signal,
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': BROWSERISH_USER_AGENT,
+      },
     });
     const body = await readJsonResponse<PurdueItemDetailResponse>(
       res,
       'Purdue item nutrition request failed',
+      'No Menu Found',
     );
     const rows = Array.isArray(body.Nutrition) ? body.Nutrition : [];
     return extractMacrosFromPurdueNutrition(rows);
@@ -119,20 +181,25 @@ export async function fetchPurdueLocationMenuItems(
   apiLocationName: string,
   locationKey: string,
   signal?: AbortSignal,
-  /** Defaults to today's date in local time (YYYY-MM-DD). */
+  /** Defaults to today's date in YYYY-MM-DD format. */
   calendarDate?: Date,
 ): Promise<MenuItem[]> {
   const d = calendarDate ?? new Date();
-  const dateStr = formatLocalYmd(d);
-  const locSeg = encodeURIComponent(apiLocationName);
-  const menuUrl = `${HFS_PROXY_PATH}/menus/v2/locations/${locSeg}/${dateStr}`;
+  const dateStr = d.toISOString().split('T')[0];
+  const canonicalLocation = canonicalizePurdueLocationName(apiLocationName);
+  const locSeg = encodeURIComponent(canonicalLocation);
+  const menuUrl = buildPurdueProxyablePath(`/menus/v2/locations/${locSeg}/${dateStr}`);
   const res = await fetch(menuUrl, {
     signal,
-    headers: { Accept: 'application/json' },
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': BROWSERISH_USER_AGENT,
+    },
   });
   const raw = await readJsonResponse<PurdueLocationMenuPayload>(
     res,
     'Purdue dining menu request failed',
+    'No Menu Found',
   );
 
   const idsToFetch = collectPurdueNutritionReadyIds(raw);
@@ -161,8 +228,28 @@ export async function fetchCampusLocationMenuItems(
   locationKey: string,
   signal?: AbortSignal,
 ): Promise<MenuItem[]> {
-  if (tenant === 'PURDUE') {
-    return fetchPurdueLocationMenuItems(apiSlug, locationKey, signal);
+  try {
+    if (tenant === 'PURDUE') {
+      return fetchPurdueLocationMenuItems(apiSlug, locationKey, signal);
+    }
+    return fetchIsuLocationMenuItems(apiSlug, locationKey, signal);
+  } catch (err) {
+    if (err instanceof DiningMenuError && err.status === 404) {
+      throw err;
+    }
+    throw new DiningMenuError('Dining menu request failed', {
+      status: null,
+      code: 'NO_MENU_FOUND',
+      userMessage: 'No Menu Found',
+    });
   }
-  return fetchIsuLocationMenuItems(apiSlug, locationKey, signal);
+}
+
+export async function fetchCampusMenu(
+  tenant: UniversityTenant,
+  apiSlug: string,
+  locationKey: string,
+  signal?: AbortSignal,
+): Promise<MenuItem[]> {
+  return fetchCampusLocationMenuItems(tenant, apiSlug, locationKey, signal);
 }

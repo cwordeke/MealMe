@@ -66,7 +66,7 @@ const ISU_DINING_LIST: readonly CampusDiningLocationConfig[] = [
     id: 'friley-windows',
     name: 'Friley Windows',
     category: 'DINING CENTERS',
-    slug: 'friley-windows-2-2',
+    slug: 'windows-dining-center',
   },
   {
     id: 'hawthorn',
