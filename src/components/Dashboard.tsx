@@ -98,10 +98,6 @@ export default function Dashboard({ stats, goal, preferences, onLogout }: Dashbo
           MealMe
         </div>
         <div className="flex items-center gap-4">
-          <div className="hidden md:flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground bg-accent px-3 py-1.5 rounded-lg border border-primary/15">
-            <CheckCircle2 className="w-3 h-3 text-primary" />
-            Engine Calibrated
-          </div>
           <button 
             className="px-4 py-1.5 border border-border rounded-lg text-foreground shadow-sm hover:bg-muted transition-colors text-sm font-bold uppercase tracking-tight"
             onClick={onLogout}

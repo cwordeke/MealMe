@@ -77,17 +77,68 @@
   }
   body {
     @apply bg-background text-foreground relative min-h-screen;
-    background-image: radial-gradient(#e5e7eb 1px, transparent 1px);
-    background-size: 24px 24px;
-    background-color: #ffffff;
   }
-  body::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background: inherit;
-    opacity: 0.03;
-    z-index: -1;
+}
+
+@layer utilities {
+  .phone-mockup-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(203 213 225 / 0.5) transparent;
+  }
+
+  .phone-mockup-scroll::-webkit-scrollbar {
+    width: 2px;
+  }
+
+  .phone-mockup-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .phone-mockup-scroll::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background-color: rgb(229 231 235 / 0.72);
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.35);
+  }
+
+  .phone-mockup-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(209 213 219 / 0.85);
+  }
+
+  /* Landing school marquee: seamless scroll + edge fade */
+  .landing-marquee-outer {
+    mask-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      #000 12%,
+      #000 88%,
+      transparent 100%
+    );
+    -webkit-mask-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      #000 12%,
+      #000 88%,
+      transparent 100%
+    );
+  }
+
+  .landing-marquee-track {
+    animation: landing-marquee-scroll 52s linear infinite;
+    will-change: transform;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .landing-marquee-track {
+      animation: none;
+    }
+  }
+}
+
+@keyframes landing-marquee-scroll {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
   }
 }

@@ -1,6 +1,8 @@
 import { motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { ChevronRight } from 'lucide-react';
+import { LandingProductMockup } from '@/components/LandingProductMockup';
+import { LandingSchoolMarquee } from '@/components/LandingSchoolMarquee';
 
 interface LandingProps {
   onStart: () => void;
@@ -8,9 +10,9 @@ interface LandingProps {
 
 export default function Landing({ onStart }: LandingProps) {
   return (
-    <div className="min-h-screen bg-transparent text-foreground flex flex-col font-sans">
+    <div className="min-h-screen bg-white text-foreground flex flex-col font-sans">
       {/* Navigation */}
-      <nav className="relative z-10 w-full border-b border-border px-8 h-16 flex items-center justify-between bg-background/80 backdrop-blur-sm">
+      <nav className="relative z-20 h-16 w-full shrink-0 border-b border-border px-8 flex items-center justify-between bg-background/80 backdrop-blur-sm">
         <div className="flex items-center gap-2 font-bold tracking-tighter text-xl">
           <img
             src="/MealMeIcon.png"
@@ -23,10 +25,15 @@ export default function Landing({ onStart }: LandingProps) {
           MealMe
         </div>
         <div className="flex items-center gap-8 text-sm font-medium text-gray-500">
-          <span className="text-foreground cursor-pointer hover:text-primary transition-colors" onClick={onStart}>Onboarding</span>
+          <span
+            className="text-foreground cursor-pointer hover:text-primary transition-colors"
+            onClick={onStart}
+          >
+            Find Meals
+          </span>
           <span className="hidden md:block cursor-help">Dining Maps</span>
           <span className="hidden md:block cursor-help">Macro Engine</span>
-          <button 
+          <button
             className="px-4 py-1.5 border border-border rounded-lg text-foreground shadow-sm hover:bg-muted transition-colors"
             onClick={onStart}
           >
@@ -35,94 +42,57 @@ export default function Landing({ onStart }: LandingProps) {
         </div>
       </nav>
 
-      {/* Main Content Area */}
-      <main className="relative z-10 flex-1 flex items-center justify-center p-6 md:p-12">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 w-full max-w-5xl items-center">
-          
-          {/* Left Side: Value Prop */}
-          <div className="lg:col-span-5 flex flex-col justify-center text-left">
+      {/* Hero: 50/50 split desktop; stacked (white → green) on mobile */}
+      <main className="relative z-10 flex w-full flex-1 flex-col lg:min-h-0 lg:flex-row">
+        {/* Left — white */}
+        <section className="flex w-full min-h-0 flex-col bg-white px-6 py-12 sm:px-10 lg:min-h-[calc(100dvh-4rem)] lg:min-w-0 lg:flex-[1_1_50%] lg:px-[clamp(1.75rem,4.5vw,4.75rem)] lg:py-16 xl:pl-20 xl:pr-12">
+          <div className="flex min-h-0 flex-1 flex-col justify-center">
             <motion.div
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
+              className="mx-auto flex w-full max-w-2xl flex-col items-start gap-4 lg:mx-0"
             >
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent text-[10px] font-bold tracking-widest uppercase text-foreground mb-6 border border-primary/15">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
-                Campus Dining
+              <div className="w-full">
+                <div
+                  aria-hidden
+                  className="mb-8 h-[4px] w-full bg-foreground"
+                />
+                <h1 className="text-[clamp(2.25rem,6.5vmin,4.5rem)] font-extrabold leading-[0.97] tracking-[-0.02em] text-foreground xl:text-[4.125rem] 2xl:text-[4.5rem]">
+                  Find{' '}
+                  <span className="text-primary">meals</span> that fit your{' '}
+                  <span className="text-primary">macros</span> on campus.
+                </h1>
               </div>
-              <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-[0.95] mb-6">
-                Fuel your <br/> 
-                <span className="text-primary">academic</span> <br/> 
-                performance.
-              </h1>
-              <p className="text-gray-500 text-lg leading-relaxed max-w-sm mb-8">
-                Precision nutrition on campus. Sync your macros with your college&apos;s dining hall menus in real time.
+
+              <p className="max-w-xl text-xl font-medium leading-[1.72] text-gray-500 xl:text-[1.35rem] xl:leading-[1.75]">
+                Set your calories and we&apos;ll show what you can eat on campus today.
               </p>
-              
-              {/* Quick Stats Widget */}
-              <div className="p-5 border border-gray-100 rounded-2xl bg-gray-50/50 flex gap-6 w-fit">
-                <div>
-                  <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">Active Venues</div>
-                  <div className="text-xl font-bold">12 Halls</div>
-                </div>
-                <div className="w-px bg-gray-200"></div>
-                <div>
-                  <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">Total Meals</div>
-                  <div className="text-xl font-bold">480+ Items</div>
-                </div>
-              </div>
+
+              <Button
+                onClick={onStart}
+                className="group h-auto w-fit min-w-[200px] rounded-none py-7 px-10 text-xl font-black leading-none tracking-tight shadow-none transition-[filter,transform] duration-200 ease-out hover:brightness-[0.93] active:translate-y-px [&_svg]:pointer-events-none"
+              >
+                Find Meals
+                <ChevronRight className="ml-2.5 size-6 shrink-0 transition-[transform] duration-200 ease-out group-hover:translate-x-1" />
+              </Button>
             </motion.div>
           </div>
 
-          {/* Right Side: Hero Action/Display */}
-          <div className="lg:col-span-7">
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.7, delay: 0.2 }}
-              className="bg-card border border-border rounded-3xl shadow-[0_1px_3px_0_rgb(31_41_55/0.06),0_10px_25px_-5px_rgb(31_41_55/0.04)] p-10 overflow-hidden relative"
-            >
-              <div className="absolute top-0 right-0 p-8 opacity-[0.03] pointer-events-none">
-                <div className="w-64 h-64 border-[40px] border-foreground/8 rounded-full"></div>
-              </div>
+          <LandingSchoolMarquee />
+        </section>
 
-              <div className="relative z-10 space-y-8">
-                <div>
-                  <h2 className="text-3xl font-bold mb-3 tracking-tight">Ready to calibrate?</h2>
-                  <p className="text-gray-500 leading-relaxed">
-                    Start your personalized macro journey with live campus dining menu data.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-6 border border-gray-100 rounded-2xl bg-gray-50/30">
-                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Algorithm</div>
-                    <div className="text-sm font-bold">Mifflin-St Jeor</div>
-                    <div className="text-[10px] text-gray-400 mt-1">Clinical Standard</div>
-                  </div>
-                  <div className="p-6 border border-gray-100 rounded-2xl bg-gray-50/30">
-                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Data Source</div>
-                    <div className="text-sm font-bold">Campus SSO</div>
-                    <div className="text-[10px] text-gray-400 mt-1">Dining Integration</div>
-                  </div>
-                </div>
-
-                <Button 
-                  onClick={onStart}
-                  className="w-full py-7 bg-primary text-primary-foreground rounded-2xl font-bold text-base tracking-tight hover:bg-primary/90 transition-all active:scale-[0.98] shadow-xl shadow-primary/20 group"
-                >
-                  Start Onboarding Flow
-                  <ChevronRight className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1" />
-                </Button>
-
-                <div className="flex items-center justify-center gap-2 text-[11px] text-gray-400 font-bold uppercase tracking-widest">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                  Dining API Status: Active
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        </div>
+        {/* Right — solid brand green, mockup centered */}
+        <section className="relative flex w-full shrink-0 flex-col items-center justify-center overflow-hidden bg-primary px-6 py-16 lg:min-h-[calc(100dvh-4rem)] lg:min-w-0 lg:flex-[1_1_50%] lg:py-12 xl:py-16">
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.65, delay: 0.1 }}
+            className="relative z-[1] flex w-full shrink-0 items-center justify-center"
+          >
+            <LandingProductMockup />
+          </motion.div>
+        </section>
       </main>
     </div>
   );
