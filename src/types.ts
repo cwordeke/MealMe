@@ -3,10 +3,18 @@ export interface UserStats {
   height: number; // inches
   age: number;
   activityLevel: 'sedentary' | 'light' | 'moderate' | 'active' | 'extra';
-  gender: 'male' | 'female';
+  gender: 'male' | 'female' | 'other';
 }
 
 export type Goal = 'bulk' | 'cut' | 'maintain';
+
+export type CampusId =
+  | 'iowa'
+  | 'purdue'
+  | 'illinois'
+  | 'wisconsin'
+  | 'michigan'
+  | 'kansas';
 
 export interface DietaryPreferences {
   halal: boolean;

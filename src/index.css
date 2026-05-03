@@ -263,3 +263,28 @@
 .landing-mapbox-host .mapboxgl-ctrl-attrib-inner {
   display: none !important;
 }
+
+/* Onboarding final CTA — subtle emphasis pulse (respect reduced motion) */
+@keyframes onboarding-calibrate-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 22px 50px -18px rgb(34 197 94 / 0.55),
+      0 0 0 0 rgb(34 197 94 / 0.35);
+  }
+  50% {
+    box-shadow:
+      0 26px 56px -16px rgb(34 197 94 / 0.6),
+      0 0 0 10px rgb(34 197 94 / 0.08);
+  }
+}
+
+.onboarding-calibrate-cta {
+  animation: onboarding-calibrate-pulse 2.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-calibrate-cta {
+    animation: none;
+  }
+}

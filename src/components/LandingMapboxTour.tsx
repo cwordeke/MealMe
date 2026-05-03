@@ -24,6 +24,15 @@ export type LandingMapboxTourHandle = {
   dive: () => void;
 };
 
+export interface LandingMapboxTourProps {
+  /**
+   * When `false`, no campus tour or fly animations; camera is fixed on the first campus
+   * and pan/zoom are disabled (e.g. onboarding HUD background).
+   * @default true
+   */
+  enableTour?: boolean;
+}
+
 /** Regional framing around stop 0 so the first fly-in is a short “final approach,” not a globe-level haul. */
 function initialCameraForFirstStop(first: CampusStop): {
   center: [number, number];
@@ -291,8 +300,18 @@ function beginCampusTourStep(
   });
 }
 
-const LandingMapboxTour = forwardRef<LandingMapboxTourHandle, Record<string, never>>(
-  function LandingMapboxTour(_, ref) {
+function disableMapInteractions(map: mapboxgl.Map): void {
+  map.dragPan.disable();
+  map.scrollZoom.disable();
+  map.boxZoom.disable();
+  map.dragRotate.disable();
+  map.keyboard.disable();
+  map.doubleClickZoom.disable();
+  map.touchZoomRotate.disable();
+}
+
+const LandingMapboxTour = forwardRef<LandingMapboxTourHandle, LandingMapboxTourProps>(
+  function LandingMapboxTour({ enableTour = true }, ref) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const abortedRef = useRef(false);
   const timersRef = useRef<{ hold?: number; pinFallback?: number }>({});
@@ -336,7 +355,7 @@ const LandingMapboxTour = forwardRef<LandingMapboxTourHandle, Record<string, nev
   }));
 
   useEffect(() => {
-    abortedRef.current = false;
+    abortedRef.current = !enableTour;
     let map: mapboxgl.Map | null = null;
     let marker: mapboxgl.Marker | null = null;
 
@@ -399,7 +418,7 @@ const LandingMapboxTour = forwardRef<LandingMapboxTourHandle, Record<string, nev
       });
 
       map.on('load', () => {
-        if (!map || abortedRef.current || cancelled) return;
+        if (!map || cancelled) return;
 
         try {
           hideMapLabelNoise(map);
@@ -408,8 +427,23 @@ const LandingMapboxTour = forwardRef<LandingMapboxTourHandle, Record<string, nev
           /* non-fatal */
         }
 
-        const { root, panel, pin } = buildHtmlMarker();
         const first = stops[0]!;
+
+        if (!enableTour) {
+          abortedRef.current = true;
+          map.jumpTo({
+            center: [first.lng, first.lat],
+            zoom: first.zoom,
+            pitch: first.pitch,
+            bearing: first.bearing,
+          });
+          disableMapInteractions(map);
+          return;
+        }
+
+        abortedRef.current = false;
+
+        const { root, panel, pin } = buildHtmlMarker();
         fillTourPanel(panel, first);
 
         marker = new mapboxgl.Marker({
@@ -454,7 +488,7 @@ const LandingMapboxTour = forwardRef<LandingMapboxTourHandle, Record<string, nev
       map = null;
       mapInstanceRef.current = null;
     };
-  }, []);
+  }, [enableTour]);
 
   return (
     <div className="relative flex h-full min-h-[min(68vh,520px)] w-full flex-1 min-h-0">

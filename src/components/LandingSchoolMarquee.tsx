@@ -31,8 +31,8 @@ function MarqueeStrip({ duplicate }: { duplicate?: boolean }) {
 
 export function LandingSchoolMarquee() {
   return (
-    <div className="mt-10 w-full shrink-0 border-t border-gray-100/80 pt-8 lg:mt-12 lg:max-w-2xl lg:pt-10">
-      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-gray-400/75">
+    <div className="mt-4 w-full shrink-0 border-t border-gray-100/80 pt-4 lg:mt-6 lg:max-w-2xl lg:pt-6">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-gray-400/75">
         Currently supporting students at:
       </p>
       <p className="sr-only">

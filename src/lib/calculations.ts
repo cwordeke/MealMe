@@ -7,12 +7,16 @@ export function calculateTDEE(stats: UserStats, goal: Goal): TDEEResult {
   const weightKg = weight * 0.453592;
   const heightCm = height * 2.54;
   
-  // Mifflin-St Jeor Equation
+  // Mifflin-St Jeor Equation (use midpoint for 'other')
   let bmr: number;
+  const maleBmr = 10 * weightKg + 6.25 * heightCm - 5 * age + 5;
+  const femaleBmr = 10 * weightKg + 6.25 * heightCm - 5 * age - 161;
   if (gender === 'male') {
-    bmr = 10 * weightKg + 6.25 * heightCm - 5 * age + 5;
+    bmr = maleBmr;
+  } else if (gender === 'female') {
+    bmr = femaleBmr;
   } else {
-    bmr = 10 * weightKg + 6.25 * heightCm - 5 * age - 161;
+    bmr = (maleBmr + femaleBmr) / 2;
   }
   
   const activityMultipliers = {
