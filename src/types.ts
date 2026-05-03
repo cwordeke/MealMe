@@ -23,11 +23,28 @@ export interface DietaryPreferences {
   glutenFree: boolean;
 }
 
+/** Meal blocks used for menus, ledger, and planners (ISU menus group by similar names). */
+export const MEAL_PERIOD_ORDER = [
+  'Breakfast',
+  'Lunch',
+  'Dinner',
+  'LateNight',
+] as const;
+
+export type MealPeriod = (typeof MEAL_PERIOD_ORDER)[number];
+
+/** Human-readable labels for UI copy (tabs, errors). */
+export function displayMealPeriod(period: MealPeriod): string {
+  return period === 'LateNight' ? 'Late Night' : period;
+}
+
 export interface MenuItem {
   id: string;
   name: string;
   location: string;
   station?: string;
+  /** Which meal periods this row was published under at the venue (merged if same dish repeats). */
+  servedDuring: MealPeriod[];
   calories: number;
   protein: number;
   carbs: number;
@@ -42,13 +59,19 @@ export interface MenuItem {
   isAddOn: boolean;
 }
 
-/** Parsed row before meal classification (live API + sanitizer). */
-export type MenuItemBase = Omit<MenuItem, 'isMainMeal' | 'isAddOn'>;
+/** Parsed row before meal classification (live API + sanitizer). `servedDuring` is optional until sanitize. */
+export type MenuItemBase = Omit<
+  MenuItem,
+  'isMainMeal' | 'isAddOn' | 'servedDuring'
+> & {
+  servedDuring?: MealPeriod[];
+};
 
 /** One row in the logged-meals tray; quantity scales macros. */
 export type LoggedFoodEntry = {
   item: MenuItem;
   quantity: number;
+  mealPeriod: MealPeriod;
 };
 
 export interface Macros {

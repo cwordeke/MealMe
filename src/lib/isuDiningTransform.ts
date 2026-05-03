@@ -1,4 +1,8 @@
-import type { MenuItemBase } from '@/types';
+import {
+  type MealPeriod,
+  type MenuItemBase,
+  MEAL_PERIOD_ORDER,
+} from '@/types';
 
 type IsuTrait = { name?: string; typeName?: string };
 
@@ -86,6 +90,43 @@ function slugPart(s: string): string {
 }
 
 /**
+ * ISU payloads group each `menu.section` slice by meal window.
+ * Normalize free-text titles into canonical {@link MealPeriod} tags.
+ */
+export function parseIsuSectionToServedPeriods(section: string): MealPeriod[] {
+  const raw = section.trim().toLowerCase().replace(/\s+/g, ' ');
+  const found = new Set<MealPeriod>();
+
+  if (/late[\s-]*night|^latenight$/.test(raw)) found.add('LateNight');
+
+  if (raw.includes('brunch')) {
+    found.add('Breakfast');
+    found.add('Lunch');
+  }
+
+  if (
+    raw.includes('breakfast') ||
+    raw.includes('continental')
+  )
+    found.add('Breakfast');
+
+  if (raw.includes('lunch')) found.add('Lunch');
+
+  if (raw.includes('dinner') || raw.includes('supper')) found.add('Dinner');
+
+  if (
+    /\bsnacks?\b/.test(raw) ||
+    raw.includes('take a break') ||
+    /\blate\s+plate\b/.test(raw)
+  )
+    found.add('LateNight');
+
+  if (found.size === 0) return [...MEAL_PERIOD_ORDER];
+
+  return MEAL_PERIOD_ORDER.filter((p) => found.has(p));
+}
+
+/**
  * Walks Iowa State `get-single-location` JSON and maps menu rows to {@link MenuItemBase}.
  * Pipe through `sanitizeAndCategorizeMenu` before displaying or scoring.
  */
@@ -105,6 +146,7 @@ export function transformIsuLocationPayload(
 
   for (const menu of menus) {
     const mealPeriod = menu.section ?? 'Menu';
+    const servedDuring = parseIsuSectionToServedPeriods(mealPeriod);
     const displays = Array.isArray(menu.menuDisplays) ? menu.menuDisplays : [];
     for (const display of displays) {
       const station = display.name ?? 'Station';
@@ -145,6 +187,7 @@ export function transformIsuLocationPayload(
             id,
             name,
             location: locationKey,
+            servedDuring,
             station: [mealPeriod, station, categoryLabel]
               .filter(Boolean)
               .join(' · '),

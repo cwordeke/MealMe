@@ -106,6 +106,18 @@
     background-color: rgb(209 213 219 / 0.85);
   }
 
+  /**
+   * Chrome / Edge / Safari — hide scrollbar track while preserving scroll (Dashboard panes).
+   */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Landing school marquee: seamless scroll + edge fade */
   .landing-marquee-outer {
     mask-image: linear-gradient(

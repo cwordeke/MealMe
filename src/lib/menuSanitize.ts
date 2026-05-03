@@ -1,4 +1,27 @@
-import type { MenuItem, MenuItemBase } from '@/types';
+import {
+  MEAL_PERIOD_ORDER,
+  type MealPeriod,
+  type MenuItem,
+  type MenuItemBase,
+} from '@/types';
+
+function normalizeServedDuring(row: MenuItemBase): MealPeriod[] {
+  if (Array.isArray(row.servedDuring) && row.servedDuring.length > 0) {
+    const picks = MEAL_PERIOD_ORDER.filter((p) =>
+      row.servedDuring.includes(p),
+    );
+    if (picks.length > 0) return picks;
+  }
+  return [...MEAL_PERIOD_ORDER];
+}
+
+function unionServedDuring(
+  a: MealPeriod[],
+  b: MealPeriod[],
+): MealPeriod[] {
+  const union = new Set<MealPeriod>([...a, ...b]);
+  return MEAL_PERIOD_ORDER.filter((p) => union.has(p));
+}
 
 const ADDON_CALORIE_MAX_EXCLUSIVE = 150;
 
@@ -56,21 +79,35 @@ export function sanitizeAndCategorizeMenu(items: MenuItemBase[]): MenuItem[] {
     purged.push(row);
   }
 
-  const seenNames = new Set<string>();
-  const deduped: MenuItemBase[] = [];
+  const byNameKey = new Map<string, MenuItemBase>();
   for (const row of purged) {
     const key = normalizeItemName(row.name);
     if (!key) continue;
-    if (seenNames.has(key)) continue;
-    seenNames.add(key);
-    deduped.push(row);
+    const withPeriods: MenuItemBase = {
+      ...row,
+      servedDuring: normalizeServedDuring(row),
+    };
+    const prev = byNameKey.get(key);
+    if (!prev) {
+      byNameKey.set(key, withPeriods);
+      continue;
+    }
+    byNameKey.set(key, {
+      ...prev,
+      servedDuring: unionServedDuring(
+        prev.servedDuring,
+        withPeriods.servedDuring,
+      ),
+    });
   }
+  const deduped = [...byNameKey.values()];
 
   const out: MenuItem[] = [];
   for (const row of deduped) {
     const { isMainMeal, isAddOn } = classifyMainVsAddOn(row);
     out.push({
       ...row,
+      servedDuring: normalizeServedDuring(row),
       isMainMeal,
       isAddOn,
     });

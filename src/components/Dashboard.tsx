@@ -7,6 +7,9 @@ import {
   DietaryPreferences,
   MenuItem,
   LoggedFoodEntry,
+  MealPeriod,
+  MEAL_PERIOD_ORDER,
+  displayMealPeriod,
 } from '@/types';
 import { calculateTDEE } from '@/lib/calculations';
 import { matchPercent, mealRecommendationScore } from '@/lib/mealRecommendation';
@@ -48,6 +51,15 @@ function isHallOpenNow(): boolean {
   return h >= 7 && h < 21;
 }
 
+function defaultMealPeriodFromClock(): MealPeriod {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 11) return 'Breakfast';
+  if (h >= 11 && h < 14) return 'Lunch';
+  if (h >= 14 && h < 17) return 'LateNight';
+  if (h >= 17 && h < 22) return 'Dinner';
+  return 'LateNight';
+}
+
 function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined') return false;
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -86,6 +98,17 @@ export default function Dashboard({
 }: DashboardProps) {
   const tdeeResult = useMemo(() => calculateTDEE(stats, goal), [stats, goal]);
   const [loggedFoods, setLoggedFoods] = useState<LoggedFoodEntry[]>([]);
+  const [activeMealPeriod, setActiveMealPeriod] = useState<MealPeriod>(
+    defaultMealPeriodFromClock,
+  );
+  const ledgerFlyTargetsRef = useRef<Record<MealPeriod, HTMLDivElement | null>>(
+    {
+      Breakfast: null,
+      Lunch: null,
+      Dinner: null,
+      LateNight: null,
+    },
+  );
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(
     null,
   );
@@ -220,6 +243,37 @@ export default function Dashboard({
     ? liveMenuByHall[selectedLocationId]
     : undefined;
 
+  /** Meal windows this venue publishes in the API (`servedDuring` union on raw menu). */
+  const menuPeriodTabsOffered = useMemo((): MealPeriod[] => {
+    if (!selectedLocationId || rawLocationMenu === undefined) {
+      return [...MEAL_PERIOD_ORDER];
+    }
+    if (rawLocationMenu.length === 0) {
+      return [...MEAL_PERIOD_ORDER];
+    }
+    const set = new Set<MealPeriod>();
+    for (const item of rawLocationMenu) {
+      for (const p of item.servedDuring) set.add(p);
+    }
+    const offered = MEAL_PERIOD_ORDER.filter((p) => set.has(p));
+    return offered.length > 0 ? offered : [...MEAL_PERIOD_ORDER];
+  }, [selectedLocationId, rawLocationMenu]);
+
+  useEffect(() => {
+    if (!selectedLocationId || rawLocationMenu === undefined) return;
+    if (rawLocationMenu.length === 0) return;
+    const first = menuPeriodTabsOffered[0];
+    if (!first) return;
+    if (!menuPeriodTabsOffered.includes(activeMealPeriod)) {
+      setActiveMealPeriod(first);
+    }
+  }, [
+    selectedLocationId,
+    rawLocationMenu,
+    menuPeriodTabsOffered,
+    activeMealPeriod,
+  ]);
+
   const drawerFiltered = useMemo(() => {
     if (!selectedLocationId || rawLocationMenu === undefined) return [];
     return rawLocationMenu.filter((item) => {
@@ -230,6 +284,20 @@ export default function Dashboard({
       return true;
     });
   }, [selectedLocationId, rawLocationMenu, preferences]);
+
+  const mealPeriodFiltered = useMemo(
+    () =>
+      drawerFiltered.filter((item) =>
+        item.servedDuring.includes(activeMealPeriod),
+      ),
+    [drawerFiltered, activeMealPeriod],
+  );
+
+  const menuUnavailableForActivePeriod = useMemo(
+    () =>
+      drawerFiltered.length > 0 && mealPeriodFiltered.length === 0,
+    [drawerFiltered, mealPeriodFiltered],
+  );
 
   const menuSearchTokens = useMemo(
     () =>
@@ -242,11 +310,11 @@ export default function Dashboard({
   );
 
   const drawerSearchFiltered = useMemo(() => {
-    if (menuSearchTokens.length === 0) return drawerFiltered;
-    return drawerFiltered.filter((item) =>
+    if (menuSearchTokens.length === 0) return mealPeriodFiltered;
+    return mealPeriodFiltered.filter((item) =>
       menuItemMatchesSearchTokens(item, menuSearchTokens),
     );
-  }, [drawerFiltered, menuSearchTokens]);
+  }, [mealPeriodFiltered, menuSearchTokens]);
 
   const emptyMenuFromApi =
     Boolean(selectedLocationId) &&
@@ -357,9 +425,11 @@ export default function Dashboard({
 
   const hallOpen = isHallOpenNow();
 
-  const logFood = useCallback((item: MenuItem) => {
+  const logFood = useCallback((item: MenuItem, mealPeriod: MealPeriod) => {
     setLoggedFoods((prev) => {
-      const idx = prev.findIndex((e) => e.item.id === item.id);
+      const idx = prev.findIndex(
+        (e) => e.item.id === item.id && e.mealPeriod === mealPeriod,
+      );
       if (idx >= 0) {
         const next = [...prev];
         next[idx] = {
@@ -368,14 +438,16 @@ export default function Dashboard({
         };
         return next;
       }
-      return [...prev, { item, quantity: 1 }];
+      return [...prev, { item, quantity: 1, mealPeriod }];
     });
   }, []);
 
   const adjustLoggedQuantity = useCallback(
-    (menuItemId: string, delta: number) => {
+    (menuItemId: string, mealPeriod: MealPeriod, delta: number) => {
       setLoggedFoods((prev) => {
-        const idx = prev.findIndex((e) => e.item.id === menuItemId);
+        const idx = prev.findIndex(
+          (e) => e.item.id === menuItemId && e.mealPeriod === mealPeriod,
+        );
         if (idx < 0) return prev;
         const q = prev[idx].quantity + delta;
         if (q <= 0) return prev.filter((_, i) => i !== idx);
@@ -387,11 +459,20 @@ export default function Dashboard({
     [],
   );
 
+  const registerLedgerFlyAnchor = useCallback(
+    (period: MealPeriod, el: HTMLDivElement | null) => {
+      ledgerFlyTargetsRef.current[period] = el;
+    },
+    [],
+  );
+
   const runMacroGhost = useCallback(
-    (item: MenuItem, buttonEl: HTMLElement | null) => {
-      const anchor = macroFlyAnchorRef.current;
+    (item: MenuItem, buttonEl: HTMLElement | null, mealPeriod: MealPeriod) => {
+      const fallbackAnchor = macroFlyAnchorRef.current;
+      const ledgerEl = ledgerFlyTargetsRef.current[mealPeriod];
+      const anchor = ledgerEl ?? fallbackAnchor;
       if (prefersReducedMotion() || !buttonEl || !anchor) {
-        logFood(item);
+        logFood(item, mealPeriod);
         return;
       }
 
@@ -435,7 +516,7 @@ export default function Dashboard({
         defaults: { force3D: true },
         onComplete: () => {
           shell.remove();
-          logFood(item);
+          logFood(item, mealPeriod);
           setMacroAbsorbPulseKey((n) => n + 1);
         },
       })
@@ -516,7 +597,7 @@ export default function Dashboard({
               Choose a location
             </p>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3">
+          <div className="scrollbar-hide min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-3">
             {ISU_LOCATION_CATEGORY_ORDER.map((category, ci) => {
               const halls = ISU_DINING_LOCATIONS.filter(
                 (l) => l.category === category,
@@ -524,11 +605,11 @@ export default function Dashboard({
               if (halls.length === 0) return null;
 
               return (
-                <div key={category} className={ci > 0 ? 'mt-4' : ''}>
-                  <p className="mb-2 px-1 text-xs font-bold uppercase tracking-widest text-neutral-400">
+                <div key={category} className={ci > 0 ? 'mt-5' : ''}>
+                  <p className="px-5 pb-2 pt-1 text-xs font-bold uppercase tracking-widest text-neutral-400">
                     {category}
                   </p>
-                  <div className="space-y-2">
+                  <div>
                     {halls.map((loc) => {
                       const active = selectedLocationId === loc.id;
                       return (
@@ -536,22 +617,28 @@ export default function Dashboard({
                           key={loc.id}
                           type="button"
                           onClick={() => selectHall(loc)}
-                          className={`w-full rounded-lg border border-gray-200 p-4 text-left shadow-sm transition-all hover:-translate-y-px hover:shadow-md active:scale-[0.99] ${
+                          className={`flex w-full flex-col gap-1 border-b border-gray-100 px-5 py-3.5 text-left transition-colors ${
                             active
-                              ? 'border-primary/40 bg-green-50 ring-2 ring-primary/25'
-                              : 'bg-white hover:bg-gray-50/80'
+                              ? 'border-l-4 border-l-brand-green bg-gray-50 hover:bg-gray-50'
+                              : 'border-l-4 border-l-transparent bg-white hover:bg-gray-50'
                           }`}
                         >
                           <h3 className="text-[clamp(0.95rem,1.9vw,1.06rem)] font-bold leading-tight tracking-[-0.03em]">
                             {loc.name}
                           </h3>
-                          <p
-                            className={`mt-2 text-sm font-medium ${
-                              hallOpen ? 'text-primary' : 'text-neutral-400'
+                          <div
+                            className={`flex items-center text-sm font-medium ${
+                              hallOpen ? 'text-neutral-600' : 'text-gray-400'
                             }`}
                           >
+                            <span
+                              className={`mr-1.5 inline-block size-2 shrink-0 rounded-full ${
+                                hallOpen ? 'bg-brand-green' : 'bg-gray-300'
+                              }`}
+                              aria-hidden
+                            />
                             {hallOpen ? 'Open' : 'Closed'}
-                          </p>
+                          </div>
                         </button>
                       );
                     })}
@@ -600,10 +687,42 @@ export default function Dashboard({
               </h1>
             </div>
           ) : null}
+          {selectedLocationId &&
+          selectedHallMeta &&
+          rawLocationMenu &&
+          rawLocationMenu.length > 0 &&
+          !menuLoading &&
+          !menuError ? (
+            <nav
+              aria-label="Meal period for menu and plan"
+              className="shrink-0 border-b border-gray-100 bg-white px-5 md:px-8"
+            >
+              <div className="-mb-px flex">
+                {menuPeriodTabsOffered.map((period) => {
+                  const active = activeMealPeriod === period;
+                  return (
+                    <button
+                      key={period}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => setActiveMealPeriod(period)}
+                      className={`min-w-0 flex-1 border-b-[2px] py-3 text-sm transition-colors motion-reduce:transition-none max-sm:text-[13px] ${
+                        active
+                          ? 'border-brand-green font-bold text-brand-green'
+                          : 'border-transparent font-medium text-neutral-400 hover:text-neutral-600'
+                      }`}
+                    >
+                      {displayMealPeriod(period)}
+                    </button>
+                  );
+                })}
+              </div>
+            </nav>
+          ) : null}
           <div
             ref={menuFeedScrollRef}
             onScroll={handleMenuFeedScroll}
-            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-6 md:px-8 md:py-8"
+            className="scrollbar-hide min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-6 md:px-8 md:py-8"
           >
             {!selectedLocationId ? (
               <div className="flex min-h-[40vh] flex-col justify-center pb-8 text-center">
@@ -639,178 +758,221 @@ export default function Dashboard({
               </div>
             ) : (
               <>
-                {rawLocationMenu && rawLocationMenu.length > 0 ? (
-                  <div className="mb-6">
-                    <label htmlFor="menu-feed-search" className="sr-only">
-                      Search meals at this dining hall
-                    </label>
-                    <div className="relative flex items-center">
-                      <Search
-                        className="pointer-events-none absolute left-3.5 top-1/2 h-[1.0625rem] w-[1.0625rem] -translate-y-1/2 text-neutral-400"
-                        strokeWidth={2.25}
-                        aria-hidden
-                      />
-                      <input
-                        id="menu-feed-search"
-                        type="search"
-                        value={menuSearchQuery}
-                        onChange={(e) => setMenuSearchQuery(e.target.value)}
-                        placeholder="Search meals..."
-                        autoComplete="off"
-                        spellCheck={false}
-                        enterKeyHint="search"
-                        className="min-h-[2.625rem] w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-10 text-[0.9375rem] font-medium text-neutral-900 shadow-sm outline-none placeholder:text-neutral-400 focus:border-primary/45 focus:ring-2 focus:ring-primary/20"
-                      />
-                      {menuSearchQuery.trim().length > 0 ? (
-                        <button
-                          type="button"
-                          aria-label="Clear search"
-                          onClick={() => setMenuSearchQuery('')}
-                          className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-800"
-                        >
-                          <X className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-                        </button>
-                      ) : null}
-                    </div>
+                {menuUnavailableForActivePeriod ? (
+                  <div className="flex min-h-[36vh] flex-col items-center justify-center px-2 py-12 text-center">
+                    <p className="max-w-md text-[0.9375rem] font-medium leading-relaxed text-neutral-600">
+                      Menu not available for{' '}
+                      <span className="font-semibold text-neutral-800">
+                        {displayMealPeriod(activeMealPeriod)}
+                      </span>{' '}
+                      at this location.
+                    </p>
                   </div>
-                ) : null}
-
-                {drawerFiltered.length === 0 ? (
-                  <p className="py-14 text-center text-sm font-medium text-neutral-500">
-                    {emptyMenuFromApi
-                      ? 'No menu data available for this location today.'
-                      : 'No items match your dietary filters at this hall.'}
-                  </p>
-                ) : drawerSearchFiltered.length === 0 ? (
-                  <p className="py-12 text-center text-sm font-medium leading-relaxed text-neutral-500">
-                    No meals match{' '}
-                    <span className="font-semibold text-neutral-700">
-                      &ldquo;{menuSearchQuery.trim()}&rdquo;
-                    </span>
-                    . Try different words or clear the search.
-                  </p>
                 ) : (
-                  <div>
-                    {drawerFilteredMain.length === 0 ? (
-                      <p className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium leading-relaxed text-amber-950">
-                        No main-course items match your filters right now. Try
-                        loosening dietary preferences or use add-ons below.
+                  <>
+                    {rawLocationMenu &&
+                      rawLocationMenu.length > 0 &&
+                      !menuUnavailableForActivePeriod && (
+                      <div className="mb-6">
+                        <label htmlFor="menu-feed-search" className="sr-only">
+                          Search meals at this dining hall
+                        </label>
+                        <div className="relative flex items-center">
+                          <Search
+                            className="pointer-events-none absolute left-3.5 top-1/2 h-[1.0625rem] w-[1.0625rem] -translate-y-1/2 text-neutral-400"
+                            strokeWidth={2.25}
+                            aria-hidden
+                          />
+                          <input
+                            id="menu-feed-search"
+                            type="search"
+                            value={menuSearchQuery}
+                            onChange={(e) =>
+                              setMenuSearchQuery(e.target.value)
+                            }
+                            placeholder="Search meals..."
+                            autoComplete="off"
+                            spellCheck={false}
+                            enterKeyHint="search"
+                            className="min-h-[2.625rem] w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-10 text-[0.9375rem] font-medium text-neutral-900 shadow-sm outline-none placeholder:text-neutral-400 focus:border-primary/45 focus:ring-2 focus:ring-primary/20"
+                          />
+                          {menuSearchQuery.trim().length > 0 ? (
+                            <button
+                              type="button"
+                              aria-label="Clear search"
+                              onClick={() => setMenuSearchQuery('')}
+                              className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-800"
+                            >
+                              <X
+                                className="h-4 w-4"
+                                strokeWidth={2.25}
+                                aria-hidden
+                              />
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    )}
+
+                    {drawerFiltered.length === 0 ? (
+                      <p className="py-14 text-center text-sm font-medium text-neutral-500">
+                        {emptyMenuFromApi
+                          ? 'No menu data available for this location today.'
+                          : 'No items match your dietary filters at this hall.'}
                       </p>
-                    ) : null}
+                    ) : drawerSearchFiltered.length === 0 ? (
+                      <p className="py-12 text-center text-sm font-medium leading-relaxed text-neutral-500">
+                        No meals match{' '}
+                        <span className="font-semibold text-neutral-700">
+                          &ldquo;{menuSearchQuery.trim()}&rdquo;
+                        </span>
+                        . Try different words or clear the search.
+                      </p>
+                    ) : (
+                      <div>
+                        {drawerFilteredMain.length === 0 ? (
+                          <p className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium leading-relaxed text-amber-950">
+                            No main-course items match your filters right now.
+                            Try loosening dietary preferences or use add-ons
+                            below.
+                          </p>
+                        ) : null}
 
-                    {menuScoreRows.length > 0 ? (
-                      <>
-                        {loggedFoods.length >= 1 &&
-                          macroGapPick &&
-                          macroGapMessage && (
-                            <MacroGapSuggestionCard
-                              item={macroGapPick}
-                              message={macroGapMessage}
-                              onAddToPlan={(btn) =>
-                                runMacroGhost(macroGapPick, btn)
-                              }
-                            />
-                          )}
-                        {topPicksWeighted.length > 0 && (
-                          <section className="mb-14">
-                            <h2 className="mb-6 text-lg font-bold tracking-[-0.02em]">
-                              Top picks for you
+                        {menuScoreRows.length > 0 ? (
+                          <>
+                            {loggedFoods.length >= 1 &&
+                              macroGapPick &&
+                              macroGapMessage && (
+                                <MacroGapSuggestionCard
+                                  item={macroGapPick}
+                                  message={macroGapMessage}
+                                  onAddToPlan={(btn) =>
+                                    runMacroGhost(
+                                      macroGapPick,
+                                      btn,
+                                      activeMealPeriod,
+                                    )
+                                  }
+                                />
+                              )}
+                            {topPicksWeighted.length > 0 && (
+                              <section className="mb-14">
+                                <h2 className="mb-6 text-lg font-bold tracking-[-0.02em]">
+                                  Top picks for you
+                                </h2>
+                                <ul className="flex flex-col gap-3">
+                                  {topPicksWeighted.map((row) => {
+                                    const wNorm =
+                                      normalizedWeightById.get(row.item.id) ??
+                                      0;
+                                    const pct = Math.round(
+                                      Math.min(
+                                        100,
+                                        Math.max(0, wNorm * 100),
+                                      ),
+                                    );
+                                    return (
+                                      <Fragment key={row.item.id}>
+                                        <MenuMealCardRow
+                                          item={row.item}
+                                          matchLabel={`${pct}% match`}
+                                          showMatch
+                                          onAddToPlan={(btn) =>
+                                            runMacroGhost(
+                                              row.item,
+                                              btn,
+                                              activeMealPeriod,
+                                            )
+                                          }
+                                        />
+                                      </Fragment>
+                                    );
+                                  })}
+                                </ul>
+                              </section>
+                            )}
+
+                            <section>
+                              <h2 className="mb-6 text-lg font-bold tracking-[-0.02em]">
+                                All other options
+                              </h2>
+                              {otherOptions.length === 0 ? (
+                                <p className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-6 text-sm font-medium text-neutral-600 shadow-sm">
+                                  Every filtered item is already in your top picks.
+                                </p>
+                              ) : (
+                                <ul className="flex flex-col gap-3">
+                                  {otherOptions.map(({ item, legacyScore }) => (
+                                    <Fragment key={item.id}>
+                                      <MenuMealCardRow
+                                        item={item}
+                                        matchLabel={`${matchPercent(legacyScore)}% match`}
+                                        showMatch
+                                        onAddToPlan={(btn) =>
+                                          runMacroGhost(
+                                            item,
+                                            btn,
+                                            activeMealPeriod,
+                                          )
+                                        }
+                                      />
+                                    </Fragment>
+                                  ))}
+                                </ul>
+                              )}
+                            </section>
+                          </>
+                        ) : null}
+
+                        {drawerFilteredAddons.length > 0 ? (
+                          <section
+                            className={
+                              menuScoreRows.length > 0
+                                ? 'mt-14 border-t border-gray-200 pt-10'
+                                : 'mt-2'
+                            }
+                          >
+                            <h2 className="mb-3 text-xs font-bold uppercase tracking-[0.12em] text-neutral-500">
+                              Sides & Add-ons
                             </h2>
-                            <ul className="flex flex-col gap-3">
-                              {topPicksWeighted.map((row) => {
-                                const wNorm =
-                                  normalizedWeightById.get(row.item.id) ?? 0;
-                                const pct = Math.round(
-                                  Math.min(100, Math.max(0, wNorm * 100)),
-                                );
-                                return (
-                                  <Fragment key={row.item.id}>
-                                    <MenuMealCardRow
-                                      item={row.item}
-                                      matchLabel={`${pct}% match`}
-                                      showMatch
-                                      onAddToPlan={(btn) =>
-                                        runMacroGhost(row.item, btn)
-                                      }
-                                    />
-                                  </Fragment>
-                                );
-                              })}
-                            </ul>
-                          </section>
-                        )}
-
-                        <section>
-                          <h2 className="mb-6 text-lg font-bold tracking-[-0.02em]">
-                            All other options
-                          </h2>
-                          {otherOptions.length === 0 ? (
-                            <p className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-6 text-sm font-medium text-neutral-600 shadow-sm">
-                              Every filtered item is already in your top picks.
-                            </p>
-                          ) : (
-                            <ul className="flex flex-col gap-3">
-                              {otherOptions.map(({ item, legacyScore }) => (
-                                <Fragment key={item.id}>
-                                  <MenuMealCardRow
-                                    item={item}
-                                    matchLabel={`${matchPercent(legacyScore)}% match`}
-                                    showMatch
-                                    onAddToPlan={(btn) =>
-                                      runMacroGhost(item, btn)
+                            <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200 bg-neutral-50/80">
+                              {drawerFilteredAddons.map((item) => (
+                                <li
+                                  key={item.id}
+                                  className="flex min-h-[2.25rem] items-center gap-2 px-3 py-1.5"
+                                >
+                                  <span className="min-w-0 flex-1 truncate text-xs font-medium leading-snug text-neutral-800">
+                                    {item.name}
+                                  </span>
+                                  <span className="shrink-0 tabular-nums text-[0.6875rem] font-medium text-neutral-500">
+                                    {Math.round(item.calories)} cal
+                                  </span>
+                                  <button
+                                    type="button"
+                                    aria-label={`Add ${item.name} to plan`}
+                                    onClick={(e) =>
+                                      runMacroGhost(
+                                        item,
+                                        e.currentTarget,
+                                        activeMealPeriod,
+                                      )
                                     }
-                                  />
-                                </Fragment>
+                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-gray-300 bg-white text-neutral-600 shadow-sm transition hover:bg-gray-50 active:scale-[0.97]"
+                                  >
+                                    <Plus
+                                      className="h-3.5 w-3.5"
+                                      strokeWidth={2.5}
+                                      aria-hidden
+                                    />
+                                  </button>
+                                </li>
                               ))}
                             </ul>
-                          )}
-                        </section>
-                      </>
-                    ) : null}
-
-                    {drawerFilteredAddons.length > 0 ? (
-                      <section
-                        className={
-                          menuScoreRows.length > 0
-                            ? 'mt-14 border-t border-gray-200 pt-10'
-                            : 'mt-2'
-                        }
-                      >
-                        <h2 className="mb-3 text-xs font-bold uppercase tracking-[0.12em] text-neutral-500">
-                          Sides & Add-ons
-                        </h2>
-                        <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200 bg-neutral-50/80">
-                          {drawerFilteredAddons.map((item) => (
-                            <li
-                              key={item.id}
-                              className="flex min-h-[2.25rem] items-center gap-2 px-3 py-1.5"
-                            >
-                              <span className="min-w-0 flex-1 truncate text-xs font-medium leading-snug text-neutral-800">
-                                {item.name}
-                              </span>
-                              <span className="shrink-0 tabular-nums text-[0.6875rem] font-medium text-neutral-500">
-                                {Math.round(item.calories)} cal
-                              </span>
-                              <button
-                                type="button"
-                                aria-label={`Add ${item.name} to plan`}
-                                onClick={(e) =>
-                                  runMacroGhost(item, e.currentTarget)
-                                }
-                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-gray-300 bg-white text-neutral-600 shadow-sm transition hover:bg-gray-50 active:scale-[0.97]"
-                              >
-                                <Plus
-                                  className="h-3.5 w-3.5"
-                                  strokeWidth={2.5}
-                                  aria-hidden
-                                />
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </section>
-                    ) : null}
-                  </div>
+                          </section>
+                        ) : null}
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}
@@ -823,7 +985,17 @@ export default function Dashboard({
             totals={totals}
             targets={macroTargets}
             loggedFoods={loggedFoods}
+            activeMealPeriod={activeMealPeriod}
+            onActiveMealPeriodChange={setActiveMealPeriod}
+            registerLedgerFlyAnchor={registerLedgerFlyAnchor}
             onAdjustQuantity={adjustLoggedQuantity}
+            mealPeriodChoices={
+              selectedLocationId &&
+              rawLocationMenu !== undefined &&
+              rawLocationMenu.length > 0
+                ? menuPeriodTabsOffered
+                : undefined
+            }
             onSignOut={onLogout}
             flyAnchorRef={macroFlyAnchorRef}
             absorbPulseKey={macroAbsorbPulseKey}

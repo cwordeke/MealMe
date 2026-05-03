@@ -1,5 +1,10 @@
-import { useEffect, useRef, type RefObject } from 'react';
-import type { LoggedFoodEntry } from '@/types';
+import { useEffect, useMemo, useRef, type RefObject } from 'react';
+import {
+  displayMealPeriod,
+  MEAL_PERIOD_ORDER,
+  type LoggedFoodEntry,
+  type MealPeriod,
+} from '@/types';
 
 export type MacroTotals = {
   calories: number;
@@ -97,7 +102,19 @@ type LiveMacroDashboardProps = {
   totals: MacroTotals;
   targets: MacroTargets;
   loggedFoods: LoggedFoodEntry[];
-  onAdjustQuantity: (menuItemId: string, delta: number) => void;
+  activeMealPeriod: MealPeriod;
+  onActiveMealPeriodChange: (period: MealPeriod) => void;
+  registerLedgerFlyAnchor: (
+    period: MealPeriod,
+    el: HTMLDivElement | null,
+  ) => void;
+  onAdjustQuantity: (
+    menuItemId: string,
+    mealPeriod: MealPeriod,
+    delta: number,
+  ) => void;
+  /** Periods the current venue serves (hides e.g. Late Night when unavailable). Omit for all periods. */
+  mealPeriodChoices?: readonly MealPeriod[];
   onSignOut?: () => void;
   flyAnchorRef?: RefObject<HTMLDivElement | null>;
   /** Increment after an energy orb completes to cue a brief pulse on gauges. */
@@ -113,7 +130,11 @@ export function LiveMacroDashboard({
   totals,
   targets,
   loggedFoods,
+  activeMealPeriod,
+  onActiveMealPeriodChange,
+  registerLedgerFlyAnchor,
   onAdjustQuantity,
+  mealPeriodChoices,
   onSignOut,
   flyAnchorRef,
   absorbPulseKey = 0,
@@ -131,6 +152,33 @@ export function LiveMacroDashboard({
     CIRC * (1 - Math.min(1, totals.fats / Math.max(targets.fats, 1)));
 
   const absorbSurfaceRef = useRef<HTMLDivElement>(null);
+
+  const pickerPeriods = useMemo((): readonly MealPeriod[] => {
+    if (!mealPeriodChoices || mealPeriodChoices.length === 0) {
+      return MEAL_PERIOD_ORDER;
+    }
+    const ordered = MEAL_PERIOD_ORDER.filter((p) =>
+      mealPeriodChoices.includes(p),
+    );
+    return ordered.length > 0 ? ordered : MEAL_PERIOD_ORDER;
+  }, [mealPeriodChoices]);
+
+  const ledgerSectionPeriods = useMemo(() => {
+    const used = new Set<MealPeriod>(pickerPeriods);
+    for (const e of loggedFoods) used.add(e.mealPeriod);
+    return MEAL_PERIOD_ORDER.filter((p) => used.has(p));
+  }, [pickerPeriods, loggedFoods]);
+
+  const entriesByPeriod = useMemo(() => {
+    const map = new Map<MealPeriod, LoggedFoodEntry[]>();
+    for (const p of MEAL_PERIOD_ORDER) map.set(p, []);
+    for (const entry of loggedFoods) {
+      const list = map.get(entry.mealPeriod);
+      if (list) list.push(entry);
+      else map.get('LateNight')!.push(entry);
+    }
+    return map;
+  }, [loggedFoods]);
 
   useEffect(() => {
     if (absorbPulseKey < 1) return;
@@ -216,65 +264,141 @@ export function LiveMacroDashboard({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col border-t border-gray-200 px-6 pb-4 pt-6">
-          <h3 className="shrink-0 text-sm font-semibold tracking-tight text-neutral-700">
-            Logged Meals
-          </h3>
-          <div className="mt-4 min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
-            {loggedFoods.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50/80 px-4 py-6 text-center text-sm font-medium text-neutral-500">
-                Add meals from the menu to see them here.
-              </p>
-            ) : (
-              <ul className="divide-y divide-gray-200 border-y border-gray-200">
-                {loggedFoods.map((entry) => {
-                  const lineKcal = entry.item.calories * entry.quantity;
+          <div className="flex min-h-0 flex-1 flex-col">
+            <h3 className="shrink-0 text-sm font-semibold tracking-tight text-neutral-700">
+              Daily Timeline Ledger
+            </h3>
+            <fieldset className="mt-5 shrink-0">
+              <legend className="sr-only">
+                Planned meal period for new items from the menu
+              </legend>
+              <div className="flex w-full gap-1 rounded-lg bg-gray-100 p-1">
+                {pickerPeriods.map((period) => {
+                  const active = activeMealPeriod === period;
                   return (
-                    <li
-                      key={entry.item.id}
-                      className="flex items-start gap-3 bg-white px-1 py-3 sm:gap-4"
+                    <button
+                      key={period}
+                      type="button"
+                      onClick={() => onActiveMealPeriodChange(period)}
+                      aria-pressed={active}
+                      className={`min-w-0 flex-1 rounded-md py-2.5 text-[0.8125rem] transition-colors ${
+                        active
+                          ? 'bg-white font-bold text-neutral-900 shadow-sm'
+                          : 'font-semibold text-neutral-400 hover:text-neutral-500'
+                      }`}
                     >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-semibold leading-snug tracking-tight text-neutral-900">
-                          {entry.item.name}
-                        </p>
-                        <p className="mt-1 font-mono text-[11px] font-semibold tabular-nums text-neutral-500">
-                          {Math.round(lineKcal)} kcal
-                        </p>
-                      </div>
-                      <div
-                        className="flex shrink-0 items-center rounded-md border border-gray-200/90 bg-gray-50/40"
-                        role="group"
-                        aria-label="Serving count"
-                      >
-                        <button
-                          type="button"
-                          aria-label="Decrease servings"
-                          className="flex size-7 items-center justify-center text-[13px] font-medium tabular-nums text-neutral-400 transition-colors hover:bg-white hover:text-neutral-900"
-                          onClick={() =>
-                            onAdjustQuantity(entry.item.id, -1)
-                          }
-                        >
-                          −
-                        </button>
-                        <span className="border-x border-gray-200 bg-white px-2 py-1 text-[11px] font-bold tabular-nums tracking-tight text-neutral-900">
-                          {entry.quantity}
-                        </span>
-                        <button
-                          type="button"
-                          aria-label="Increase servings"
-                          className="flex size-7 items-center justify-center text-[13px] font-medium tabular-nums text-neutral-400 transition-colors hover:bg-white hover:text-neutral-900"
-                          onClick={() =>
-                            onAdjustQuantity(entry.item.id, 1)
-                          }
-                        >
-                          +
-                        </button>
-                      </div>
-                    </li>
+                      {displayMealPeriod(period)}
+                    </button>
                   );
                 })}
-              </ul>
-            )}
+              </div>
+            </fieldset>
+
+            <div className="relative mt-5 min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1 pb-2">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute bottom-2 left-[10px] top-9 w-px bg-gray-200"
+              />
+              <div className="pb-8">
+                {ledgerSectionPeriods.map((period, idx) => {
+                  const entries = entriesByPeriod.get(period) ?? [];
+                  const subtotal = entries.reduce(
+                    (acc, e) => acc + e.item.calories * e.quantity,
+                    0,
+                  );
+                  return (
+                    <section
+                      key={period}
+                      className={idx > 0 ? 'mt-8' : ''}
+                    >
+                      <div
+                        ref={(el) => registerLedgerFlyAnchor(period, el)}
+                        className="relative z-[1] pl-7"
+                      >
+                        <p className="text-xs font-bold tracking-widest">
+                          <span className="text-neutral-400">
+                            {displayMealPeriod(period).toUpperCase()} •{' '}
+                          </span>
+                          <span className="tabular-nums text-brand-green">
+                            {formatEnergy(subtotal)} kcal
+                          </span>
+                        </p>
+                      </div>
+
+                      {entries.length === 0 ? (
+                        <p className="relative mt-3 rounded-md border border-dashed border-gray-200/90 bg-neutral-50/30 py-4 pl-7 pr-4 text-[13px] font-medium text-neutral-400/90">
+                          No meals planned.
+                        </p>
+                      ) : (
+                        <ul className="relative mt-1">
+                          {entries.map((entry) => {
+                            const lineKcal =
+                              entry.item.calories * entry.quantity;
+                            const key = `${entry.item.id}::${entry.mealPeriod}`;
+                            return (
+                              <li
+                                key={key}
+                                className="relative flex items-start gap-3 py-3 pl-7 sm:gap-4"
+                              >
+                                <span
+                                  aria-hidden
+                                  className="pointer-events-none absolute left-[10px] top-1/2 z-[1] size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-gray-200 bg-neutral-300 shadow-[0_0_0_2px_white]"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-[13px] font-semibold leading-snug tracking-tight text-neutral-900">
+                                    {entry.item.name}
+                                  </p>
+                                  <p className="mt-1 font-mono text-[11px] font-semibold tabular-nums text-neutral-500">
+                                    {Math.round(lineKcal)} kcal
+                                  </p>
+                                </div>
+                                <div
+                                  className="flex shrink-0 items-center rounded-md border border-gray-200/90 bg-gray-50/40"
+                                  role="group"
+                                  aria-label="Serving count"
+                                >
+                                  <button
+                                    type="button"
+                                    aria-label="Decrease servings"
+                                    className="flex size-7 items-center justify-center text-[13px] font-medium tabular-nums text-neutral-400 transition-colors hover:bg-white hover:text-neutral-900"
+                                    onClick={() =>
+                                      onAdjustQuantity(
+                                        entry.item.id,
+                                        entry.mealPeriod,
+                                        -1,
+                                      )
+                                    }
+                                  >
+                                    −
+                                  </button>
+                                  <span className="border-x border-gray-200 bg-white px-2 py-1 text-[11px] font-bold tabular-nums tracking-tight text-neutral-900">
+                                    {entry.quantity}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    aria-label="Increase servings"
+                                    className="flex size-7 items-center justify-center text-[13px] font-medium tabular-nums text-neutral-400 transition-colors hover:bg-white hover:text-neutral-900"
+                                    onClick={() =>
+                                      onAdjustQuantity(
+                                        entry.item.id,
+                                        entry.mealPeriod,
+                                        1,
+                                      )
+                                    }
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       </div>
