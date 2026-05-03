@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import gsap from 'gsap';
-import { Loader2, Plus } from 'lucide-react';
+import { Loader2, Plus, Search, X } from 'lucide-react';
 import {
   UserStats,
   Goal,
@@ -36,6 +36,13 @@ interface DashboardProps {
 
 const COLUMN_BORDER = 'border-r border-solid border-gray-200' as const;
 
+/** Hero height at top of scroll (Tailwind `h-72`). */
+const MENU_FEED_HEADER_MAX_H = 288;
+/** Collapsed ribbon height once user has scrolled down the menu pane. */
+const MENU_FEED_HEADER_MIN_H = 88;
+/** How much menu-pane scroll drives full shrink (0 → fully expanded, ≥ this → collapsed). */
+const MENU_FEED_HEADER_COLLAPSE_SCROLL = 200;
+
 function isHallOpenNow(): boolean {
   const h = new Date().getHours();
   return h >= 7 && h < 21;
@@ -44,6 +51,24 @@ function isHallOpenNow(): boolean {
 function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined') return false;
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/** Header art in `/public/hall-headers/{locationId}-header.jpg`. */
+function diningHallHeaderImageSrc(locationId: string): string {
+  return `/hall-headers/${locationId}-header.jpg`;
+}
+
+/** Space-separated tokens must all appear in dish name or station (case-insensitive). */
+function menuItemMatchesSearchTokens(
+  item: MenuItem,
+  tokens: readonly string[],
+): boolean {
+  if (tokens.length === 0) return true;
+  const name = item.name.toLowerCase();
+  const station = item.station?.toLowerCase() ?? '';
+  return tokens.every(
+    (tok) => name.includes(tok) || station.includes(tok),
+  );
 }
 
 type MenuScoreRow = {
@@ -71,7 +96,12 @@ export default function Dashboard({
   const [menuError, setMenuError] = useState<string | null>(null);
 
   const macroFlyAnchorRef = useRef<HTMLDivElement>(null);
+  const menuFeedScrollRef = useRef<HTMLDivElement>(null);
+  const menuHeaderShrinkRaf = useRef<number | undefined>(undefined);
   const [macroAbsorbPulseKey, setMacroAbsorbPulseKey] = useState(0);
+  const [hallHeaderImageFailed, setHallHeaderImageFailed] = useState(false);
+  const [menuFeedHeaderShrinkT, setMenuFeedHeaderShrinkT] = useState(0);
+  const [menuSearchQuery, setMenuSearchQuery] = useState('');
 
   const recContext = useMemo(
     () => ({ goal, tdee: tdeeResult }),
@@ -149,6 +179,43 @@ export default function Dashboard({
     };
   }, [selectedLocationId]);
 
+  useEffect(() => {
+    setHallHeaderImageFailed(false);
+  }, [selectedLocationId]);
+
+  useEffect(() => {
+    menuFeedScrollRef.current?.scrollTo({ top: 0 });
+    setMenuFeedHeaderShrinkT(0);
+    setMenuSearchQuery('');
+  }, [selectedLocationId]);
+
+  useEffect(() => {
+    return () => {
+      if (menuHeaderShrinkRaf.current != null)
+        cancelAnimationFrame(menuHeaderShrinkRaf.current);
+    };
+  }, []);
+
+  const updateMenuFeedHeaderShrink = useCallback((): void => {
+    menuHeaderShrinkRaf.current = undefined;
+    const pane = menuFeedScrollRef.current;
+    if (!pane) return;
+    const prefersStill =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const t = prefersStill
+      ? 0
+      : Math.min(1, pane.scrollTop / MENU_FEED_HEADER_COLLAPSE_SCROLL);
+    setMenuFeedHeaderShrinkT(t);
+  }, []);
+
+  const handleMenuFeedScroll = useCallback((): void => {
+    if (menuHeaderShrinkRaf.current != null) return;
+    menuHeaderShrinkRaf.current = window.requestAnimationFrame(
+      updateMenuFeedHeaderShrink,
+    );
+  }, [updateMenuFeedHeaderShrink]);
+
   const rawLocationMenu = selectedLocationId
     ? liveMenuByHall[selectedLocationId]
     : undefined;
@@ -164,19 +231,36 @@ export default function Dashboard({
     });
   }, [selectedLocationId, rawLocationMenu, preferences]);
 
+  const menuSearchTokens = useMemo(
+    () =>
+      menuSearchQuery
+        .trim()
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(Boolean),
+    [menuSearchQuery],
+  );
+
+  const drawerSearchFiltered = useMemo(() => {
+    if (menuSearchTokens.length === 0) return drawerFiltered;
+    return drawerFiltered.filter((item) =>
+      menuItemMatchesSearchTokens(item, menuSearchTokens),
+    );
+  }, [drawerFiltered, menuSearchTokens]);
+
   const emptyMenuFromApi =
     Boolean(selectedLocationId) &&
     rawLocationMenu !== undefined &&
     rawLocationMenu.length === 0;
 
   const drawerFilteredMain = useMemo(
-    () => drawerFiltered.filter((i) => i.isMainMeal),
-    [drawerFiltered],
+    () => drawerSearchFiltered.filter((i) => i.isMainMeal),
+    [drawerSearchFiltered],
   );
 
   const drawerFilteredAddons = useMemo(
-    () => drawerFiltered.filter((i) => i.isAddOn),
-    [drawerFiltered],
+    () => drawerSearchFiltered.filter((i) => i.isAddOn),
+    [drawerSearchFiltered],
   );
 
   const menuScoreRows = useMemo((): MenuScoreRow[] => {
@@ -390,6 +474,24 @@ export default function Dashboard({
     ? ISU_DINING_LOCATIONS.find((l) => l.id === selectedLocationId)
     : undefined;
 
+  const menuFeedHeaderHeightPx = useMemo(
+    () =>
+      MENU_FEED_HEADER_MAX_H -
+      menuFeedHeaderShrinkT *
+        (MENU_FEED_HEADER_MAX_H - MENU_FEED_HEADER_MIN_H),
+    [menuFeedHeaderShrinkT],
+  );
+
+  const menuFeedHeaderTitleStyle = useMemo(() => {
+    const t = menuFeedHeaderShrinkT;
+    return {
+      fontSize: `${2.25 - t * 0.8125}rem`,
+      lineHeight: 1.05 - t * 0.12,
+      letterSpacing: `${-0.03 - t * 0.02}em`,
+      bottom: `${24 - t * 13}px`,
+    } as const;
+  }, [menuFeedHeaderShrinkT]);
+
   const fontStack =
     "font-[system-ui,-apple-system,BlinkMacSystemFont,'Segoe_UI',Roboto,'Inter',sans-serif]";
 
@@ -464,21 +566,45 @@ export default function Dashboard({
         <section
           className={`flex min-h-0 min-w-0 flex-col bg-white ${COLUMN_BORDER}`}
         >
-          <header
-            className="shrink-0 border-b border-solid border-gray-200 px-5 py-4 md:px-8 md:py-5"
-          >
-            <p className="text-sm font-medium text-neutral-500">Menu feed</p>
-            {selectedLocationId && selectedHallMeta ? (
-              <h1 className="mt-2 text-[clamp(1.2rem,2.2vw,1.75rem)] font-bold leading-[1.1] tracking-[-0.03em]">
+          {selectedHallMeta ? (
+            <div
+              className="relative w-full shrink-0 overflow-hidden bg-white"
+              style={{ height: menuFeedHeaderHeightPx }}
+            >
+              <div
+                className="pointer-events-none absolute inset-0 bg-gradient-to-br from-neutral-100 via-neutral-50 to-neutral-200"
+                aria-hidden
+              />
+              {!hallHeaderImageFailed ? (
+                <img
+                  src={diningHallHeaderImageSrc(selectedHallMeta.id)}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover object-center"
+                  style={{
+                    objectPosition: `center ${48 + menuFeedHeaderShrinkT * 18}%`,
+                  }}
+                  loading="lazy"
+                  decoding="async"
+                  onError={() => setHallHeaderImageFailed(true)}
+                />
+              ) : null}
+              <div
+                className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white via-white/40 to-transparent"
+                aria-hidden
+              />
+              <h1
+                style={menuFeedHeaderTitleStyle}
+                className="absolute left-8 right-8 z-[1] font-bold text-neutral-900"
+              >
                 {selectedHallMeta.name}
               </h1>
-            ) : (
-              <p className="mt-2 text-sm font-medium text-neutral-400">
-                Select a dining hall to load the menu
-              </p>
-            )}
-          </header>
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-6 md:px-8 md:py-8">
+            </div>
+          ) : null}
+          <div
+            ref={menuFeedScrollRef}
+            onScroll={handleMenuFeedScroll}
+            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-6 md:px-8 md:py-8"
+          >
             {!selectedLocationId ? (
               <div className="flex min-h-[40vh] flex-col justify-center pb-8 text-center">
                 <p className="text-lg font-bold tracking-[-0.02em]">
@@ -513,11 +639,55 @@ export default function Dashboard({
               </div>
             ) : (
               <>
+                {rawLocationMenu && rawLocationMenu.length > 0 ? (
+                  <div className="mb-6">
+                    <label htmlFor="menu-feed-search" className="sr-only">
+                      Search meals at this dining hall
+                    </label>
+                    <div className="relative flex items-center">
+                      <Search
+                        className="pointer-events-none absolute left-3.5 top-1/2 h-[1.0625rem] w-[1.0625rem] -translate-y-1/2 text-neutral-400"
+                        strokeWidth={2.25}
+                        aria-hidden
+                      />
+                      <input
+                        id="menu-feed-search"
+                        type="search"
+                        value={menuSearchQuery}
+                        onChange={(e) => setMenuSearchQuery(e.target.value)}
+                        placeholder="Search meals..."
+                        autoComplete="off"
+                        spellCheck={false}
+                        enterKeyHint="search"
+                        className="min-h-[2.625rem] w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-10 text-[0.9375rem] font-medium text-neutral-900 shadow-sm outline-none placeholder:text-neutral-400 focus:border-primary/45 focus:ring-2 focus:ring-primary/20"
+                      />
+                      {menuSearchQuery.trim().length > 0 ? (
+                        <button
+                          type="button"
+                          aria-label="Clear search"
+                          onClick={() => setMenuSearchQuery('')}
+                          className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-800"
+                        >
+                          <X className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
                 {drawerFiltered.length === 0 ? (
                   <p className="py-14 text-center text-sm font-medium text-neutral-500">
                     {emptyMenuFromApi
                       ? 'No menu data available for this location today.'
                       : 'No items match your dietary filters at this hall.'}
+                  </p>
+                ) : drawerSearchFiltered.length === 0 ? (
+                  <p className="py-12 text-center text-sm font-medium leading-relaxed text-neutral-500">
+                    No meals match{' '}
+                    <span className="font-semibold text-neutral-700">
+                      &ldquo;{menuSearchQuery.trim()}&rdquo;
+                    </span>
+                    . Try different words or clear the search.
                   </p>
                 ) : (
                   <div>
